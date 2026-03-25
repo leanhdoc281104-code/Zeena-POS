@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the POS system (Admin or Cashier)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "cashier"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "An item in the inventory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "barcode": { "type": "string" },
+        "price": { "type": "number" },
+        "cost": { "type": "number" },
+        "stock": { "type": "number" },
+        "minStock": { "type": "number" },
+        "unit": { "type": "string", "enum": ["piece", "weight"] },
+        "category": { "type": "string" },
+        "expiryDate": { "type": "string", "format": "date-time" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "price", "cost", "stock", "minStock", "unit", "createdAt", "updatedAt"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "A completed transaction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": { "type": "string" },
+              "name": { "type": "string" },
+              "qty": { "type": "number" },
+              "price": { "type": "number" },
+              "cost": { "type": "number" }
+            },
+            "required": ["productId", "name", "qty", "price", "cost"]
+          }
+        },
+        "total": { "type": "number" },
+        "profit": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["cash", "card", "debt"] },
+        "date": { "type": "string", "format": "date-time" },
+        "cashierId": { "type": "string" },
+        "customerId": { "type": "string" }
+      },
+      "required": ["id", "items", "total", "profit", "paymentMethod", "date", "cashierId"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "An operational expense",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "category": { "type": "string" },
+        "recordedBy": { "type": "string" }
+      },
+      "required": ["id", "description", "amount", "date", "recordedBy"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "A customer with potential debt",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "debtBalance": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "debtBalance", "createdAt"]
+    },
+    "StoreSettings": {
+      "title": "Store Settings",
+      "description": "Global store settings like name, address, logo",
+      "type": "object",
+      "properties": {
+        "storeName": { "type": "string" },
+        "storeAddress": { "type": "string" },
+        "storeLogo": { "type": "string" }
+      },
+      "required": ["storeName"]
+    },
+    "PartnershipSettings": {
+      "title": "Partnership Settings",
+      "description": "Partnership settings",
+      "type": "object",
+      "properties": {
+        "partner1Paid": { "type": "number" },
+        "partner2Paid": { "type": "number" }
+      },
+      "required": ["partner1Paid", "partner2Paid"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles and roles"
+    },
+    "products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Inventory items"
+    },
+    "sales/{saleId}": {
+      "schema": { "$ref": "#/entities/Sale" },
+      "description": "Completed sales records"
+    },
+    "expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Operational expenses"
+    },
+    "customers/{customerId}": {
+      "schema": { "$ref": "#/entities/Customer" },
+      "description": "Customer records for debt tracking"
+    },
+    "settings/store": {
+      "schema": { "$ref": "#/entities/StoreSettings" },
+      "description": "Global application settings"
+    },
+    "settings/partnership": {
+      "schema": { "$ref": "#/entities/PartnershipSettings" },
+      "description": "Partnership settings"
+    }
+  }
+}

@@ -1,0 +1,240 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        request.auth.token.email == "leanhdoc281104@gmail.com"
+      );
+    }
+
+    function isCashier() {
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'cashier' ||
+        isAdmin()
+      );
+    }
+
+    function isObserver() {
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'observer' ||
+        isAdmin()
+      );
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['uid', 'name', 'email', 'role', 'createdAt']) &&
+             data.uid is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && data.email.size() < 150 &&
+             data.role in ['admin', 'cashier', 'observer'] &&
+             data.createdAt is string;
+    }
+
+    function isValidProduct() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['name', 'price', 'cost', 'stock', 'minStock', 'unit', 'createdAt', 'updatedAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 150 &&
+             data.price is number && data.price >= 0 &&
+             data.cost is number && data.cost >= 0 &&
+             data.stock is number &&
+             data.minStock is number && data.minStock >= 0 &&
+             data.unit in ['piece', 'weight'] &&
+             data.createdAt is string &&
+             data.updatedAt is string;
+    }
+
+    function isValidSale() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['items', 'total', 'profit', 'paymentMethod', 'date', 'cashierId']) &&
+             data.items is list && data.items.size() > 0 && data.items.size() < 200 &&
+             data.total is number && data.total >= 0 &&
+             data.profit is number &&
+             data.paymentMethod in ['cash', 'card', 'debt', 'bankak'] &&
+             (!('receiptUrl' in data) || (data.receiptUrl is string && data.receiptUrl.size() < 1000000)) &&
+             data.date is string &&
+             data.cashierId is string && data.cashierId == request.auth.uid;
+    }
+
+    function isValidPurchase() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['items', 'total', 'supplierName', 'date', 'recordedBy']) &&
+             data.items is list && data.items.size() > 0 && data.items.size() < 200 &&
+             data.total is number && data.total > 0 &&
+             data.supplierName is string && data.supplierName.size() > 0 && data.supplierName.size() < 100 &&
+             data.date is string &&
+             data.recordedBy is string && data.recordedBy == request.auth.uid;
+    }
+
+    function isValidExpense() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['description', 'amount', 'date', 'recordedBy']) &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 500 &&
+             data.amount is number && data.amount > 0 &&
+             data.date is string &&
+             data.recordedBy is string && data.recordedBy == request.auth.uid;
+    }
+
+    function isValidCustomer() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['name', 'debtBalance', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.debtBalance is number &&
+             data.createdAt is string;
+    }
+
+    function isValidStoreSettings() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['storeName']) &&
+             data.storeName is string && data.storeName.size() > 0 && data.storeName.size() < 100 &&
+             (!('storeAddress' in data) || (data.storeAddress is string && data.storeAddress.size() < 200)) &&
+             (!('storeLogo' in data) || (data.storeLogo is string && data.storeLogo.size() < 1000000));
+    }
+
+    function isValidPartnershipSettings() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['partner1Paid', 'partner2Paid']) &&
+             data.partner1Paid is number && data.partner1Paid >= 0 &&
+             data.partner2Paid is number && data.partner2Paid >= 0;
+    }
+
+    function isValidManufacturingCycle() {
+      return hasOnlyAllowedFields(['productName', 'fundingAmount', 'manufacturingCost', 'cartonsProduced', 'cartonPrice', 'status', 'createdAt', 'updatedAt']) &&
+             request.resource.data.productName is string &&
+             request.resource.data.fundingAmount is number &&
+             request.resource.data.manufacturingCost is number &&
+             request.resource.data.cartonsProduced is number &&
+             request.resource.data.cartonPrice is number &&
+             request.resource.data.status in ['active', 'completed'] &&
+             request.resource.data.createdAt is string &&
+             request.resource.data.updatedAt is string;
+    }
+
+    function isValidManufacturingSale() {
+      return hasOnlyAllowedFields(['cycleId', 'customerName', 'customerPhone', 'cartonsSold', 'totalAmount', 'date', 'recordedBy']) &&
+             request.resource.data.cycleId is string &&
+             request.resource.data.customerName is string &&
+             request.resource.data.customerPhone is string &&
+             request.resource.data.cartonsSold is number &&
+             request.resource.data.totalAmount is number &&
+             request.resource.data.date is string &&
+             request.resource.data.recordedBy == request.auth.uid;
+    }
+
+    function isValidManufacturingExpense() {
+      return hasOnlyAllowedFields(['cycleId', 'description', 'amount', 'date', 'recordedBy']) &&
+             request.resource.data.cycleId is string &&
+             request.resource.data.description is string &&
+             request.resource.data.amount is number &&
+             request.resource.data.date is string &&
+             request.resource.data.recordedBy == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (isAdmin() || isObserver() || isOwner(userId));
+      allow create: if isAuthenticated() && isValidUser() && (isAdmin() || (isOwner(userId) && request.resource.data.role == 'cashier'));
+      allow update: if isAuthenticated() && isValidUser() && isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidProduct();
+      allow update: if isAuthenticated() && isValidProduct() && (
+        isAdmin() || 
+        (isCashier() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'cost', 'updatedAt']))
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /sales/{saleId} {
+      allow read: if isAuthenticated();
+      allow create: if isCashier() && isValidSale();
+      allow update: if isAdmin() && isValidSale();
+      allow delete: if isAdmin();
+    }
+
+    match /purchases/{purchaseId} {
+      allow read: if isAuthenticated();
+      allow create: if isCashier() && isValidPurchase();
+      allow update: if isAdmin() && isValidPurchase();
+      allow delete: if isAdmin();
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if isAuthenticated() && (isAdmin() || isObserver() || resource.data.recordedBy == request.auth.uid);
+      allow create: if isCashier() && isValidExpense();
+      allow update: if isAdmin() && isValidExpense();
+      allow delete: if isAdmin();
+    }
+
+    match /customers/{customerId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidCustomer();
+      allow update: if isAuthenticated() && isValidCustomer() && (
+        isAdmin() ||
+        (isCashier() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['debtBalance', 'updatedAt']))
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /settings/store {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidStoreSettings();
+      allow delete: if isAdmin();
+    }
+
+    match /settings/partnership {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidPartnershipSettings();
+      allow delete: if isAdmin();
+    }
+
+    match /manufacturing_cycles/{cycleId} {
+      allow read: if isAuthenticated() && (isAdmin() || isObserver());
+      allow create: if isAdmin() && isValidManufacturingCycle();
+      allow update: if isAdmin() && isValidManufacturingCycle();
+      allow delete: if isAdmin();
+    }
+
+    match /manufacturing_sales/{saleId} {
+      allow read: if isAuthenticated() && (isAdmin() || isObserver() || resource.data.recordedBy == request.auth.uid);
+      allow create: if isAdmin() && isValidManufacturingSale();
+      allow update: if isAdmin() && isValidManufacturingSale();
+      allow delete: if isAdmin();
+    }
+
+    match /manufacturing_expenses/{expenseId} {
+      allow read: if isAuthenticated() && (isAdmin() || isObserver() || resource.data.recordedBy == request.auth.uid);
+      allow create: if isAdmin() && isValidManufacturingExpense();
+      allow update: if isAdmin() && isValidManufacturingExpense();
+      allow delete: if isAdmin();
+    }
+  }
+}
