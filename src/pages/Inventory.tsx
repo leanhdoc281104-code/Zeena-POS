@@ -5,9 +5,10 @@ import { Product } from '../types';
 import { useAuth } from '../AuthContext';
 import { formatCurrency } from '../utils/format';
 import { Plus, Search, Edit, Trash2, Package, ScanLine, Image as ImageIcon } from 'lucide-react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import { format, parseISO } from 'date-fns';
 import { compressImage } from '../utils/imageUtils';
+import { Toast } from '../components/Toast';
 
 export const Inventory: React.FC = () => {
   const { user } = useAuth();
@@ -16,6 +17,7 @@ export const Inventory: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -38,19 +40,64 @@ export const Inventory: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    let html5QrCode: Html5Qrcode | null = null;
+
     if (isScanning) {
-      const scanner = new Html5QrcodeScanner('inventory-barcode-reader', { qrbox: { width: 250, height: 250 }, fps: 5 }, false);
-      scanner.render((decodedText) => {
-        setFormData(prev => ({ ...prev, barcode: decodedText }));
-        scanner.clear();
+      html5QrCode = new Html5Qrcode('inventory-barcode-reader');
+      
+      const config = { fps: 10, qrbox: { width: 300, height: 150 } };
+      
+      html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+          // Play beep sound
+          try {
+            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.type = 'sine';
+            oscillator.frequency.value = 800; // Beep frequency
+            
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(1, audioContext.currentTime + 0.01);
+            gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.1);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.1);
+          } catch (e) {
+            console.error("Audio play failed", e);
+          }
+
+          setFormData(prev => ({ ...prev, barcode: decodedText }));
+          setIsScanning(false);
+        },
+        (errorMessage) => {
+          // Ignore scan errors
+        }
+      ).catch((err) => {
+        console.error("Error starting scanner", err);
+        const errorMsg = err?.toString() || '';
+        if (errorMsg.includes('NotAllowedError') || errorMsg.includes('Permission dismissed')) {
+          setToast({ message: 'الرجاء السماح بالوصول إلى الكاميرا لاستخدام الماسح الضوئي.', type: 'error' });
+        } else {
+          setToast({ message: 'فشل تشغيل الكاميرا', type: 'error' });
+        }
         setIsScanning(false);
-      }, (err) => {
-        // Ignore scan errors
       });
-      return () => {
-        scanner.clear().catch(console.error);
-      };
     }
+
+    return () => {
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().then(() => {
+          html5QrCode?.clear();
+        }).catch(console.error);
+      }
+    };
   }, [isScanning]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -121,7 +168,7 @@ export const Inventory: React.FC = () => {
       setIsModalOpen(false);
     } catch (error) {
       console.error('Error saving product:', error);
-      alert('فشل في حفظ المنتج.');
+      setToast({ message: 'فشل في حفظ المنتج.', type: 'error' });
     }
   };
 
@@ -132,7 +179,7 @@ export const Inventory: React.FC = () => {
         await deleteDoc(doc(db, 'products', id));
       } catch (error) {
         console.error('Error deleting product:', error);
-        alert('فشل في حذف المنتج.');
+        setToast({ message: 'فشل في حذف المنتج.', type: 'error' });
       }
     }
   };
@@ -144,6 +191,7 @@ export const Inventory: React.FC = () => {
 
   return (
     <div className="space-y-6" dir="rtl">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-2xl font-bold text-gray-900">إدارة المخزون</h1>
         {user?.role === 'admin' && (
@@ -261,8 +309,15 @@ export const Inventory: React.FC = () => {
                     </button>
                   </div>
                   {isScanning && (
-                    <div className="mt-2 p-2 bg-white rounded-xl border border-gray-200">
-                      <div id="inventory-barcode-reader" width="100%"></div>
+                    <div className="mt-2 p-4 bg-white rounded-xl shadow-sm border border-gray-200 relative overflow-hidden flex justify-center">
+                      <div className="relative w-full max-w-sm">
+                        <div id="inventory-barcode-reader" className="w-full rounded-lg overflow-hidden"></div>
+                        <div className="absolute top-0 left-0 w-full h-full pointer-events-none flex items-center justify-center">
+                           <div className="w-[300px] h-[150px] relative border-2 border-pink-500 rounded-lg overflow-hidden">
+                             <div className="absolute left-0 w-full h-1 bg-pink-500 shadow-[0_0_10px_#ec4899] animate-scan"></div>
+                           </div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -299,20 +354,23 @@ export const Inventory: React.FC = () => {
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">صورة المنتج</label>
-                  <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-4 cursor-pointer group">
                     {formData.imageUrl ? (
                       <div className="relative w-20 h-20 rounded-xl border border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center shrink-0">
                         <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
                         <button
                           type="button"
-                          onClick={() => setFormData({ ...formData, imageUrl: '' })}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setFormData({ ...formData, imageUrl: '' });
+                          }}
                           className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
                     ) : (
-                      <div className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50 text-gray-400 shrink-0">
+                      <div className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50 text-gray-400 shrink-0 group-hover:bg-gray-100 group-hover:border-pink-400 transition-all">
                         <ImageIcon className="w-6 h-6" />
                       </div>
                     )}
@@ -320,12 +378,13 @@ export const Inventory: React.FC = () => {
                       <input
                         type="file"
                         accept="image/*"
+                        capture="environment"
                         onChange={handleImageUpload}
-                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-pink-700 hover:file:bg-pink-100 transition-all"
+                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-pink-700 hover:file:bg-pink-100 transition-all cursor-pointer"
                       />
-                      <p className="text-xs text-gray-500 mt-2">يفضل استخدام صورة بخلفية شفافة (PNG) بحجم أقل من 500 كيلوبايت.</p>
+                      <p className="text-xs text-gray-500 mt-2">اضغط على الصورة لفتح الكاميرا مباشرة، أو اختر ملفاً.</p>
                     </div>
-                  </div>
+                  </label>
                 </div>
               </div>
 

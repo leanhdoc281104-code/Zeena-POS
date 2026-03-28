@@ -25,19 +25,19 @@ export default defineConfig(({mode}) => {
           display: 'standalone',
           icons: [
             {
-              src: 'pwa-192x192.svg',
+              src: 'app-icon.png',
               sizes: '192x192',
-              type: 'image/svg+xml'
+              type: 'image/png'
             },
             {
-              src: 'pwa-512x512.svg',
+              src: 'app-icon.png',
               sizes: '512x512',
-              type: 'image/svg+xml'
+              type: 'image/png'
             },
             {
-              src: 'pwa-512x512.svg',
+              src: 'app-icon.png',
               sizes: '512x512',
-              type: 'image/svg+xml',
+              type: 'image/png',
               purpose: 'any maskable'
             }
           ]

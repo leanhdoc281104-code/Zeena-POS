@@ -5,7 +5,7 @@ import { useAuth } from '../AuthContext';
 import { Product, SaleItem, Customer, StoreSettings } from '../types';
 import { Search, ScanLine, ShoppingCart, Plus, Minus, Trash2, CreditCard, Banknote, UserRound, Package, Printer, Bluetooth, Download, X } from 'lucide-react';
 import { Toast } from '../components/Toast';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import { formatCurrency } from '../utils/format';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -57,19 +57,64 @@ export const POS: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    let html5QrCode: Html5Qrcode | null = null;
+
     if (isScanning) {
-      const scanner = new Html5QrcodeScanner('reader', { qrbox: { width: 250, height: 250 }, fps: 5 }, false);
-      scanner.render((decodedText) => {
-        handleScan(decodedText);
-        scanner.clear();
+      html5QrCode = new Html5Qrcode('reader');
+      
+      const config = { fps: 10, qrbox: { width: 300, height: 150 } };
+      
+      html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+          // Play beep sound
+          try {
+            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.type = 'sine';
+            oscillator.frequency.value = 800; // Beep frequency
+            
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(1, audioContext.currentTime + 0.01);
+            gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.1);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.1);
+          } catch (e) {
+            console.error("Audio play failed", e);
+          }
+
+          handleScan(decodedText);
+          setIsScanning(false);
+        },
+        (errorMessage) => {
+          // Ignore scan errors
+        }
+      ).catch((err) => {
+        console.error("Error starting scanner", err);
+        const errorMsg = err?.toString() || '';
+        if (errorMsg.includes('NotAllowedError') || errorMsg.includes('Permission dismissed')) {
+          setToast({ message: 'الرجاء السماح بالوصول إلى الكاميرا لاستخدام الماسح الضوئي.', type: 'error' });
+        } else {
+          setToast({ message: 'فشل تشغيل الكاميرا', type: 'error' });
+        }
         setIsScanning(false);
-      }, (err) => {
-        // Ignore scan errors
       });
-      return () => {
-        scanner.clear().catch(console.error);
-      };
     }
+
+    return () => {
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().then(() => {
+          html5QrCode?.clear();
+        }).catch(console.error);
+      }
+    };
   }, [isScanning]);
 
   const handleScan = (barcode: string) => {
@@ -364,8 +409,15 @@ export const POS: React.FC = () => {
         </div>
 
         {isScanning && (
-          <div className="mb-6 p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-            <div id="reader" width="100%"></div>
+          <div className="mb-6 p-4 bg-white rounded-xl shadow-sm border border-gray-200 relative overflow-hidden flex justify-center">
+            <div className="relative w-full max-w-sm">
+              <div id="reader" className="w-full rounded-lg overflow-hidden"></div>
+              <div className="absolute top-0 left-0 w-full h-full pointer-events-none flex items-center justify-center">
+                 <div className="w-[300px] h-[150px] relative border-2 border-pink-500 rounded-lg overflow-hidden">
+                   <div className="absolute left-0 w-full h-1 bg-pink-500 shadow-[0_0_10px_#ec4899] animate-scan"></div>
+                 </div>
+              </div>
+            </div>
           </div>
         )}
 
