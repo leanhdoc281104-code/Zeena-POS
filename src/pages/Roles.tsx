@@ -104,7 +104,7 @@ export const Roles: React.FC = () => {
         {currentUser?.role === 'admin' && (
           <button
             onClick={() => setIsModalOpen(true)}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-indigo-700 transition-colors"
+            className="bg-pink-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-pink-700 transition-colors"
           >
             <Plus className="w-5 h-5" />
             إضافة حساب جديد
@@ -131,7 +131,7 @@ export const Roles: React.FC = () => {
                 <tr key={user.uid} className="hover:bg-gray-50 transition-colors">
                   <td className="p-4 border-b border-gray-100">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                      <div className="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center text-pink-600 font-bold">
                         {user.name.charAt(0)}
                       </div>
                       <span className="font-medium text-gray-900">{user.name}</span>
@@ -190,7 +190,7 @@ export const Roles: React.FC = () => {
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 outline-none"
                     placeholder="الاسم الكامل"
                   />
                   <UserIcon className="w-5 h-5 text-gray-400 absolute right-3 top-2.5" />
@@ -205,7 +205,7 @@ export const Roles: React.FC = () => {
                     required
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 outline-none"
                     placeholder="example@domain.com"
                   />
                   <Mail className="w-5 h-5 text-gray-400 absolute right-3 top-2.5" />
@@ -221,7 +221,7 @@ export const Roles: React.FC = () => {
                     minLength={6}
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 outline-none"
                     placeholder="كلمة مرور قوية (6 أحرف على الأقل)"
                   />
                   <Key className="w-5 h-5 text-gray-400 absolute right-3 top-2.5" />
@@ -234,7 +234,7 @@ export const Roles: React.FC = () => {
                   <select
                     value={formData.role}
                     onChange={(e) => setFormData({ ...formData, role: e.target.value as 'admin' | 'cashier' | 'observer' })}
-                    className="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none appearance-none"
+                    className="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 outline-none appearance-none"
                   >
                     <option value="cashier">كاشير (مبيعات فقط)</option>
                     <option value="admin">مدير (صلاحيات كاملة)</option>
@@ -248,7 +248,7 @@ export const Roles: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                  className="flex-1 bg-pink-600 text-white py-2 rounded-lg font-medium hover:bg-pink-700 transition-colors disabled:opacity-50"
                 >
                   {isSubmitting ? 'جاري الإنشاء...' : 'إنشاء الحساب'}
                 </button>

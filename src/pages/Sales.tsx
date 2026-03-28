@@ -61,7 +61,7 @@ export const Sales: React.FC = () => {
           <select
             value={timeFilter}
             onChange={(e) => setTimeFilter(e.target.value)}
-            className="px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+            className="px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none bg-white"
           >
             <option value="all">كل الأوقات</option>
             <option value="today">اليوم</option>
@@ -74,7 +74,7 @@ export const Sales: React.FC = () => {
             placeholder="تصفية بالمنتج..."
             value={productFilter}
             onChange={(e) => setProductFilter(e.target.value)}
-            className="px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+            className="px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
           />
 
           <div className="relative w-full sm:w-64">
@@ -83,7 +83,7 @@ export const Sales: React.FC = () => {
               placeholder="البحث برقم الإيصال..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
             />
             <Search className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" />
           </div>
@@ -107,7 +107,7 @@ export const Sales: React.FC = () => {
                 <tr key={sale.id} className="hover:bg-gray-50 transition-colors">
                   <td className="p-4 border-b border-gray-100 font-mono text-sm">{sale.id.slice(0, 8)}</td>
                   <td className="p-4 border-b border-gray-100">{format(parseISO(sale.date), 'yyyy/MM/dd HH:mm')}</td>
-                  <td className="p-4 border-b border-gray-100 font-bold text-indigo-600">
+                  <td className="p-4 border-b border-gray-100 font-bold text-pink-600">
                     {formatCurrency(sale.total)} ج.س
                   </td>
                   <td className="p-4 border-b border-gray-100">
@@ -124,7 +124,7 @@ export const Sales: React.FC = () => {
                     <div className="flex justify-center gap-2">
                       <button
                         onClick={() => setSelectedSale(sale)}
-                        className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                        className="p-2 text-pink-600 hover:bg-pink-50 rounded-lg transition-colors"
                         title="عرض التفاصيل"
                       >
                         <Eye className="w-5 h-5" />
@@ -185,7 +185,7 @@ export const Sales: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">الإجمالي</p>
-                <p className="font-bold text-indigo-600">{formatCurrency(selectedSale.total)} ج.س</p>
+                <p className="font-bold text-pink-600">{formatCurrency(selectedSale.total)} ج.س</p>
               </div>
             </div>
 

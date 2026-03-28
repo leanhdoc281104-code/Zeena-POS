@@ -84,7 +84,7 @@ export const Customers: React.FC = () => {
         {user?.role === 'admin' && (
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl hover:bg-pink-700 transition-colors shadow-sm"
           >
             <Plus className="w-5 h-5" />
             إضافة عميل
@@ -99,7 +99,7 @@ export const Customers: React.FC = () => {
             <input
               type="text"
               placeholder="البحث بالاسم أو رقم الهاتف..."
-              className="w-full pr-10 pl-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full pr-10 pl-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -132,7 +132,7 @@ export const Customers: React.FC = () => {
                   <tr key={customer.id} className="hover:bg-gray-50 transition-colors">
                     <td className="p-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold">
+                        <div className="w-10 h-10 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center font-bold">
                           {customer.name.charAt(0).toUpperCase()}
                         </div>
                         <p className="font-medium text-gray-900">{customer.name}</p>
@@ -180,22 +180,22 @@ export const Customers: React.FC = () => {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">الاسم الكامل *</label>
-                <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">رقم الهاتف *</label>
-                <input required type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                <input required type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">رصيد الدين الافتتاحي</label>
-                <input type="number" step="0.01" value={formData.debtBalance} onChange={e => setFormData({...formData, debtBalance: e.target.value})} className="w-full p-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                <input type="number" step="0.01" value={formData.debtBalance} onChange={e => setFormData({...formData, debtBalance: e.target.value})} className="w-full p-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none" />
               </div>
 
               <div className="flex gap-3 pt-6 border-t border-gray-200">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors">
                   إلغاء
                 </button>
-                <button type="submit" className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors shadow-sm">
+                <button type="submit" className="flex-1 py-3 px-4 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-medium transition-colors shadow-sm">
                   حفظ العميل
                 </button>
               </div>
@@ -219,7 +219,7 @@ export const Customers: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">مبلغ الدفعة *</label>
-                <input required type="number" step="0.01" max={selectedCustomer.debtBalance} value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full p-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="0.00" />
+                <input required type="number" step="0.01" max={selectedCustomer.debtBalance} value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full p-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none" placeholder="0.00" />
               </div>
 
               <div className="flex gap-3 pt-6 border-t border-gray-200">

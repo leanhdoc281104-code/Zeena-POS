@@ -203,28 +203,28 @@ export const Manufacturing: React.FC = () => {
       <div className="flex space-x-4 space-x-reverse border-b border-gray-200">
         <button
           onClick={() => setActiveTab('dashboard')}
-          className={`pb-4 px-4 text-sm font-medium ${activeTab === 'dashboard' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+          className={`pb-4 px-4 text-sm font-medium ${activeTab === 'dashboard' ? 'border-b-2 border-pink-600 text-pink-600' : 'text-gray-500 hover:text-gray-700'}`}
         >
           <LayoutDashboard className="w-5 h-5 inline-block ml-2" />
           لوحة التحكم
         </button>
         <button
           onClick={() => setActiveTab('cycles')}
-          className={`pb-4 px-4 text-sm font-medium ${activeTab === 'cycles' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+          className={`pb-4 px-4 text-sm font-medium ${activeTab === 'cycles' ? 'border-b-2 border-pink-600 text-pink-600' : 'text-gray-500 hover:text-gray-700'}`}
         >
           <Factory className="w-5 h-5 inline-block ml-2" />
           دورات الإنتاج
         </button>
         <button
           onClick={() => setActiveTab('sales')}
-          className={`pb-4 px-4 text-sm font-medium ${activeTab === 'sales' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+          className={`pb-4 px-4 text-sm font-medium ${activeTab === 'sales' ? 'border-b-2 border-pink-600 text-pink-600' : 'text-gray-500 hover:text-gray-700'}`}
         >
           <FileText className="w-5 h-5 inline-block ml-2" />
           المبيعات
         </button>
         <button
           onClick={() => setActiveTab('expenses')}
-          className={`pb-4 px-4 text-sm font-medium ${activeTab === 'expenses' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+          className={`pb-4 px-4 text-sm font-medium ${activeTab === 'expenses' ? 'border-b-2 border-pink-600 text-pink-600' : 'text-gray-500 hover:text-gray-700'}`}
         >
           <Receipt className="w-5 h-5 inline-block ml-2" />
           المنصرفات
@@ -263,10 +263,10 @@ export const Manufacturing: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-500">نصيب متجر زينة (50%)</p>
-                  <p className="text-2xl font-bold text-indigo-600 mt-1">{formatCurrency(zeinaShare)}</p>
+                  <p className="text-2xl font-bold text-pink-600 mt-1">{formatCurrency(zeinaShare)}</p>
                 </div>
-                <div className="p-3 bg-indigo-50 rounded-lg">
-                  <Handshake className="w-6 h-6 text-indigo-600" />
+                <div className="p-3 bg-pink-50 rounded-lg">
+                  <Handshake className="w-6 h-6 text-pink-600" />
                 </div>
               </div>
             </div>
@@ -342,7 +342,7 @@ export const Manufacturing: React.FC = () => {
             <div className="flex justify-end">
               <button
                 onClick={() => setIsCycleModalOpen(true)}
-                className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                className="flex items-center px-4 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700"
               >
                 <Plus className="w-5 h-5 ml-2" />
                 إضافة دورة إنتاج
@@ -423,7 +423,7 @@ export const Manufacturing: React.FC = () => {
             <div className="flex justify-end">
               <button
                 onClick={() => setIsSaleModalOpen(true)}
-                className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                className="flex items-center px-4 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700"
               >
                 <Plus className="w-5 h-5 ml-2" />
                 إضافة مبيعة
@@ -479,7 +479,7 @@ export const Manufacturing: React.FC = () => {
             <div className="flex justify-end">
               <button
                 onClick={() => setIsExpenseModalOpen(true)}
-                className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                className="flex items-center px-4 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700"
               >
                 <Plus className="w-5 h-5 ml-2" />
                 إضافة منصرف
@@ -542,7 +542,7 @@ export const Manufacturing: React.FC = () => {
                   required
                   value={cycleFormData.productName}
                   onChange={(e) => setCycleFormData({ ...cycleFormData, productName: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
                 />
               </div>
               <div>
@@ -553,7 +553,7 @@ export const Manufacturing: React.FC = () => {
                   min="0"
                   value={cycleFormData.fundingAmount}
                   onChange={(e) => setCycleFormData({ ...cycleFormData, fundingAmount: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
                 />
               </div>
               <div>
@@ -564,7 +564,7 @@ export const Manufacturing: React.FC = () => {
                   min="0"
                   value={cycleFormData.manufacturingCost}
                   onChange={(e) => setCycleFormData({ ...cycleFormData, manufacturingCost: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -576,7 +576,7 @@ export const Manufacturing: React.FC = () => {
                     min="1"
                     value={cycleFormData.cartonsProduced}
                     onChange={(e) => setCycleFormData({ ...cycleFormData, cartonsProduced: parseInt(e.target.value) || 0 })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
                   />
                 </div>
                 <div>
@@ -587,14 +587,14 @@ export const Manufacturing: React.FC = () => {
                     min="0"
                     value={cycleFormData.cartonPrice}
                     onChange={(e) => setCycleFormData({ ...cycleFormData, cartonPrice: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
                   />
                 </div>
               </div>
               <div className="pt-4">
                 <button
                   type="submit"
-                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  className="w-full py-3 bg-pink-600 text-white rounded-xl font-medium hover:bg-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500"
                 >
                   حفظ الدورة
                 </button>
@@ -621,7 +621,7 @@ export const Manufacturing: React.FC = () => {
                   required
                   value={saleFormData.cycleId}
                   onChange={(e) => setSaleFormData({ ...saleFormData, cycleId: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
                 >
                   <option value="">اختر الدورة...</option>
                   {cycles.filter(c => c.status === 'active').map(cycle => (
@@ -636,7 +636,7 @@ export const Manufacturing: React.FC = () => {
                   required
                   value={saleFormData.customerName}
                   onChange={(e) => setSaleFormData({ ...saleFormData, customerName: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
                 />
               </div>
               <div>
@@ -646,7 +646,7 @@ export const Manufacturing: React.FC = () => {
                   required
                   value={saleFormData.customerPhone}
                   onChange={(e) => setSaleFormData({ ...saleFormData, customerPhone: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
                   dir="ltr"
                 />
               </div>
@@ -658,13 +658,13 @@ export const Manufacturing: React.FC = () => {
                   min="1"
                   value={saleFormData.cartonsSold}
                   onChange={(e) => setSaleFormData({ ...saleFormData, cartonsSold: parseInt(e.target.value) || 0 })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
                 />
               </div>
               <div className="pt-4">
                 <button
                   type="submit"
-                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  className="w-full py-3 bg-pink-600 text-white rounded-xl font-medium hover:bg-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500"
                 >
                   حفظ المبيعة
                 </button>
@@ -691,7 +691,7 @@ export const Manufacturing: React.FC = () => {
                   required
                   value={expenseFormData.cycleId}
                   onChange={(e) => setExpenseFormData({ ...expenseFormData, cycleId: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
                 >
                   <option value="">اختر الدورة...</option>
                   {cycles.filter(c => c.status === 'active').map(cycle => (
@@ -706,7 +706,7 @@ export const Manufacturing: React.FC = () => {
                   required
                   value={expenseFormData.description}
                   onChange={(e) => setExpenseFormData({ ...expenseFormData, description: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
                 />
               </div>
               <div>
@@ -717,13 +717,13 @@ export const Manufacturing: React.FC = () => {
                   min="1"
                   value={expenseFormData.amount}
                   onChange={(e) => setExpenseFormData({ ...expenseFormData, amount: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
                 />
               </div>
               <div className="pt-4">
                 <button
                   type="submit"
-                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  className="w-full py-3 bg-pink-600 text-white rounded-xl font-medium hover:bg-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500"
                 >
                   حفظ المنصرف
                 </button>

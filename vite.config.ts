@@ -20,7 +20,7 @@ export default defineConfig(({mode}) => {
           name: 'نظام زينة',
           short_name: 'زينة',
           description: 'نظام زينة لإدارة المبيعات والتصنيع',
-          theme_color: '#4f46e5',
+          theme_color: '#db2777',
           background_color: '#ffffff',
           display: 'standalone',
           icons: [

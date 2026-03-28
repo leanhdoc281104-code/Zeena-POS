@@ -107,7 +107,7 @@ export const Partnership: React.FC = () => {
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-indigo-700 disabled:opacity-50"
+            className="bg-pink-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-pink-700 disabled:opacity-50"
           >
             <Save className="w-5 h-5" />
             {isSaving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
@@ -136,7 +136,7 @@ export const Partnership: React.FC = () => {
                   disabled={user?.role === 'observer'}
                   value={settings.partner1Paid || ''}
                   onChange={(e) => setSettings({ ...settings, partner1Paid: Number(e.target.value) })}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                   placeholder="المبلغ المدفوع"
                 />
                 <span className="absolute left-3 top-2 text-gray-500">ج.س</span>
@@ -153,7 +153,7 @@ export const Partnership: React.FC = () => {
                   disabled={user?.role === 'observer'}
                   value={settings.partner2Paid || ''}
                   onChange={(e) => setSettings({ ...settings, partner2Paid: Number(e.target.value) })}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                   placeholder="المبلغ المدفوع"
                 />
                 <span className="absolute left-3 top-2 text-gray-500">ج.س</span>
@@ -188,12 +188,12 @@ export const Partnership: React.FC = () => {
           </div>
 
           <div className="space-y-4">
-            <div className="p-4 border border-indigo-100 bg-indigo-50 rounded-xl flex justify-between items-center">
+            <div className="p-4 border border-pink-100 bg-pink-50 rounded-xl flex justify-between items-center">
               <div>
-                <h4 className="font-bold text-indigo-900">محمد وأهله</h4>
-                <p className="text-sm text-indigo-700">نصيب الشراكة: 50%</p>
+                <h4 className="font-bold text-pink-900">محمد وأهله</h4>
+                <p className="text-sm text-pink-700">نصيب الشراكة: 50%</p>
               </div>
-              <span className="text-xl font-bold text-indigo-700">
+              <span className="text-xl font-bold text-pink-700">
                 {formatCurrency(partner1ProfitShare)} ج.س
               </span>
             </div>

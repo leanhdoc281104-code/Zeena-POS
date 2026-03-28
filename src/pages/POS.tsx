@@ -347,7 +347,7 @@ export const POS: React.FC = () => {
             <input
               type="text"
               placeholder="ابحث عن المنتجات أو امسح الباركود..."
-              className="w-full pr-10 pl-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+              className="w-full pr-10 pl-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -355,7 +355,7 @@ export const POS: React.FC = () => {
           <button
             onClick={() => setIsScanning(!isScanning)}
             className={`px-4 py-3 rounded-xl flex items-center gap-2 font-medium transition-colors ${
-              isScanning ? 'bg-red-100 text-red-700' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+              isScanning ? 'bg-red-100 text-red-700' : 'bg-pink-100 text-pink-700 hover:bg-pink-200'
             }`}
           >
             <ScanLine className="w-5 h-5" />
@@ -387,7 +387,7 @@ export const POS: React.FC = () => {
                 </div>
                 <h3 className="font-medium text-gray-900 line-clamp-2 mb-1">{product.name}</h3>
                 <div className="mt-auto flex items-center justify-between w-full">
-                  <span className="font-bold text-indigo-600">{formatCurrency(product.price)} ج.س</span>
+                  <span className="font-bold text-pink-600">{formatCurrency(product.price)} ج.س</span>
                   <span className="text-xs text-gray-500">{product.stock} متبقي</span>
                 </div>
               </button>
@@ -400,7 +400,7 @@ export const POS: React.FC = () => {
       <div className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-40">
         <button
           onClick={() => setIsCartOpen(true)}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-xl font-bold flex items-center justify-between shadow-lg transition-colors"
+          className="w-full bg-pink-600 hover:bg-pink-700 text-white p-4 rounded-xl font-bold flex items-center justify-between shadow-lg transition-colors"
         >
           <div className="flex items-center gap-2">
             <ShoppingCart className="w-6 h-6" />
@@ -428,11 +428,11 @@ export const POS: React.FC = () => {
         >
           <div className="p-4 lg:p-6 border-b border-gray-200 flex items-center justify-between">
             <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <ShoppingCart className="w-6 h-6 text-indigo-600" />
+              <ShoppingCart className="w-6 h-6 text-pink-600" />
               الطلب الحالي
             </h2>
             <div className="flex items-center gap-3">
-              <span className="bg-indigo-100 text-indigo-700 py-1 px-3 rounded-full text-sm font-medium">
+              <span className="bg-pink-100 text-pink-700 py-1 px-3 rounded-full text-sm font-medium">
                 {cart.reduce((sum, item) => sum + item.qty, 0)} عناصر
               </span>
               <button 
@@ -458,14 +458,14 @@ export const POS: React.FC = () => {
                     type="text"
                     value={item.name}
                     onChange={(e) => updateCartItem(item.productId, 'name', e.target.value)}
-                    className="w-full bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 focus:outline-none font-medium text-gray-900 truncate"
+                    className="w-full bg-transparent border-b border-transparent hover:border-gray-300 focus:border-pink-500 focus:outline-none font-medium text-gray-900 truncate"
                   />
                   <div className="flex items-center text-sm text-gray-500">
                     <input
                       type="number"
                       value={item.price}
                       onChange={(e) => updateCartItem(item.productId, 'price', parseFloat(e.target.value) || 0)}
-                      className="w-20 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 focus:outline-none"
+                      className="w-20 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-pink-500 focus:outline-none"
                     />
                     <span>ج.س</span>
                   </div>
@@ -501,7 +501,7 @@ export const POS: React.FC = () => {
                   min="0"
                   value={discount || ''}
                   onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
-                  className="w-20 text-left px-2 py-1 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-20 text-left px-2 py-1 rounded-lg border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
                   placeholder="0"
                 />
                 <span className="text-gray-500">ج.س</span>
@@ -509,7 +509,7 @@ export const POS: React.FC = () => {
             </div>
             <div className="pt-3 border-t border-gray-200 flex justify-between items-center">
               <span className="text-gray-900 font-bold text-lg">الإجمالي</span>
-              <span className="text-3xl font-bold text-indigo-600">{formatCurrency(total)} ج.س</span>
+              <span className="text-3xl font-bold text-pink-600">{formatCurrency(total)} ج.س</span>
             </div>
           </div>
             <button
@@ -518,7 +518,7 @@ export const POS: React.FC = () => {
                 setCheckoutModalOpen(true);
               }}
               disabled={cart.length === 0 || user?.role === 'observer'}
-              className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl font-bold text-lg transition-colors shadow-sm"
+              className="w-full py-4 bg-pink-600 hover:bg-pink-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl font-bold text-lg transition-colors shadow-sm"
             >
               {user?.role === 'observer' ? 'للمشاهدة فقط' : 'الدفع'}
             </button>
@@ -541,14 +541,14 @@ export const POS: React.FC = () => {
             <div className="space-y-4 mb-8">
               <div className="flex justify-between items-center p-4 bg-gray-50 rounded-xl">
                 <span className="text-gray-600">المبلغ الإجمالي</span>
-                <span className="text-2xl font-bold text-indigo-600">{formatCurrency(total)} ج.س</span>
+                <span className="text-2xl font-bold text-pink-600">{formatCurrency(total)} ج.س</span>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <button
                   onClick={() => setPaymentMethod('cash')}
                   className={`p-4 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${
-                    paymentMethod === 'cash' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:border-indigo-200'
+                    paymentMethod === 'cash' ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-pink-200'
                   }`}
                 >
                   <Banknote className="w-6 h-6" />
@@ -557,7 +557,7 @@ export const POS: React.FC = () => {
                 <button
                   onClick={() => setPaymentMethod('card')}
                   className={`p-4 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${
-                    paymentMethod === 'card' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:border-indigo-200'
+                    paymentMethod === 'card' ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-pink-200'
                   }`}
                 >
                   <CreditCard className="w-6 h-6" />
@@ -566,7 +566,7 @@ export const POS: React.FC = () => {
                 <button
                   onClick={() => setPaymentMethod('bankak')}
                   className={`p-4 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${
-                    paymentMethod === 'bankak' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:border-indigo-200'
+                    paymentMethod === 'bankak' ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-pink-200'
                   }`}
                 >
                   <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
@@ -575,7 +575,7 @@ export const POS: React.FC = () => {
                 <button
                   onClick={() => setPaymentMethod('debt')}
                   className={`p-4 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${
-                    paymentMethod === 'debt' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:border-indigo-200'
+                    paymentMethod === 'debt' ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-pink-200'
                   }`}
                 >
                   <UserRound className="w-6 h-6" />
@@ -602,7 +602,7 @@ export const POS: React.FC = () => {
                         }
                       }
                     }}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition-all"
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-pink-700 hover:file:bg-pink-100 transition-all"
                   />
                   {receiptUrl && (
                     <div className="mt-2">
@@ -618,7 +618,7 @@ export const POS: React.FC = () => {
                   <select
                     value={selectedCustomer}
                     onChange={(e) => setSelectedCustomer(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
                   >
                     <option value="">-- اختر العميل --</option>
                     {customers.map(c => (
@@ -640,7 +640,7 @@ export const POS: React.FC = () => {
               <button
                 onClick={handleCheckout}
                 disabled={isCheckingOut}
-                className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-medium transition-colors shadow-sm flex justify-center items-center"
+                className="flex-1 py-3 px-4 bg-pink-600 hover:bg-pink-700 disabled:opacity-50 text-white rounded-xl font-medium transition-colors shadow-sm flex justify-center items-center"
               >
                 {isCheckingOut ? (
                   <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -662,10 +662,7 @@ export const POS: React.FC = () => {
             {/* Receipt Preview */}
             <div id="receipt-preview" className="flex-1 overflow-y-auto bg-gray-50 p-4 rounded-xl border border-gray-200 mb-6 font-mono text-sm text-gray-800" dir="rtl">
               <div className="text-center mb-4 border-b border-gray-300 pb-4">
-                {storeSettings?.storeLogo && (
-                  <img src={storeSettings.storeLogo} alt="Store Logo" className="mx-auto h-16 mb-2 object-contain" />
-                )}
-                <h3 className="font-bold text-lg">{storeSettings?.storeName || 'نظام زينة'}</h3>
+                <img src="/logo.png" alt="Store Logo" className="mx-auto h-16 mb-2 object-contain" />
                 {storeSettings?.storeAddress && (
                   <p className="text-sm text-gray-600 mt-1">{storeSettings.storeAddress}</p>
                 )}
@@ -725,7 +722,7 @@ export const POS: React.FC = () => {
             <div className="grid grid-cols-1 gap-3">
               <button
                 onClick={handlePrint}
-                className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                className="w-full py-3 px-4 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
               >
                 <Printer className="w-5 h-5" />
                 طباعة (عبر النظام / طابعة عادية)

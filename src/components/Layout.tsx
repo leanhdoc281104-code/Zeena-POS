@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { ShoppingCart, LayoutDashboard, Package, Receipt, Users, LogOut, Menu, X, Settings as SettingsIcon, FileText, Truck, Handshake, UserCog, Factory } from 'lucide-react';
-import { useState } from 'react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { StoreSettings } from '../types';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -14,6 +16,22 @@ export const Layout: React.FC = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [settings, setSettings] = useState<StoreSettings | null>(null);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const docRef = doc(db, 'settings', 'store');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setSettings(docSnap.data() as StoreSettings);
+        }
+      } catch (error) {
+        console.error('Error fetching settings:', error);
+      }
+    };
+    fetchSettings();
+  }, []);
 
   const handleSignOut = async () => {
     await signOut();
@@ -44,7 +62,7 @@ export const Layout: React.FC = () => {
         isMobileMenuOpen ? "translate-x-0" : "translate-x-full"
       )}>
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
-          <span className="text-xl font-bold text-indigo-600">نظام زينة</span>
+          <img src="/logo.png" alt="نظام زينة" className="h-10 object-contain" />
           <button onClick={() => setIsMobileMenuOpen(false)} className="lg:hidden">
             <X className="w-6 h-6 text-gray-500" />
           </button>
@@ -59,7 +77,7 @@ export const Layout: React.FC = () => {
                 className={({ isActive }) => cn(
                   "flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-colors",
                   isActive 
-                    ? "bg-indigo-50 text-indigo-700" 
+                    ? "bg-pink-50 text-pink-700" 
                     : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                 )}
               >
@@ -90,7 +108,7 @@ export const Layout: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile Header */}
         <header className="lg:hidden flex items-center justify-between h-16 px-4 bg-white border-b border-gray-200">
-          <span className="text-xl font-bold text-indigo-600">نظام زينة</span>
+          <img src="/logo.png" alt="نظام زينة" className="h-8 object-contain" />
           <button onClick={() => setIsMobileMenuOpen(true)}>
             <Menu className="w-6 h-6 text-gray-500" />
           </button>

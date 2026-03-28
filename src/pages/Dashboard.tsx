@@ -3,8 +3,8 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Sale, Expense, Product, Purchase, ManufacturingCycle, ManufacturingSale, ManufacturingExpense } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import { TrendingUp, TrendingDown, DollarSign, Package, AlertTriangle } from 'lucide-react';
-import { format, subDays, isAfter, parseISO } from 'date-fns';
+import { TrendingUp, TrendingDown, DollarSign, Package, AlertTriangle, Filter, Calendar } from 'lucide-react';
+import { format, subDays, isAfter, parseISO, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter, startOfYear, endOfYear, eachDayOfInterval, eachMonthOfInterval, differenceInDays, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrency } from '../utils/format';
 
 export const Dashboard: React.FC = () => {
@@ -15,6 +15,11 @@ export const Dashboard: React.FC = () => {
   const [mfgCycles, setMfgCycles] = useState<ManufacturingCycle[]>([]);
   const [mfgSales, setMfgSales] = useState<ManufacturingSale[]>([]);
   const [mfgExpenses, setMfgExpenses] = useState<ManufacturingExpense[]>([]);
+
+  const [dateFilter, setDateFilter] = useState<'currentMonth' | 'prevMonth' | 'currentQuarter' | 'currentHalf' | 'currentYear' | 'custom'>('currentMonth');
+  const [customStartDate, setCustomStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [customEndDate, setCustomEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'store' | 'mfg'>('all');
 
   useEffect(() => {
     const unsubSales = onSnapshot(query(collection(db, 'sales'), orderBy('date', 'desc')), (snapshot) => {
@@ -50,46 +55,176 @@ export const Dashboard: React.FC = () => {
     };
   }, []);
 
-  // Calculate Stats
-  const today = new Date();
-  const last30Days = Array.from({ length: 30 }).map((_, i) => format(subDays(today, 29 - i), 'yyyy-MM-dd'));
+  const getActiveDateRange = () => {
+    const today = new Date();
+    switch (dateFilter) {
+      case 'currentMonth':
+        return { start: startOfMonth(today), end: endOfMonth(today) };
+      case 'prevMonth': {
+        const prev = subMonths(today, 1);
+        return { start: startOfMonth(prev), end: endOfMonth(prev) };
+      }
+      case 'currentQuarter':
+        return { start: startOfQuarter(today), end: endOfQuarter(today) };
+      case 'currentHalf': {
+        const month = today.getMonth();
+        const start = new Date(today.getFullYear(), month < 6 ? 0 : 6, 1);
+        const end = new Date(today.getFullYear(), month < 6 ? 5 : 11, month < 6 ? 30 : 31);
+        return { start, end };
+      }
+      case 'currentYear':
+        return { start: startOfYear(today), end: endOfYear(today) };
+      case 'custom':
+        return { start: startOfDay(parseISO(customStartDate)), end: endOfDay(parseISO(customEndDate)) };
+      default:
+        return { start: startOfMonth(today), end: endOfMonth(today) };
+    }
+  };
 
-  const salesByDay = last30Days.map(date => {
-    const daySales = sales.filter(s => s.date.startsWith(date));
-    const dayExpenses = expenses.filter(e => e.date.startsWith(date));
-    const dayPurchases = purchases.filter(p => p.date.startsWith(date));
-    
-    const revenue = daySales.reduce((sum, s) => sum + s.total, 0);
-    const profit = daySales.reduce((sum, s) => sum + s.profit, 0);
-    const expenseTotal = dayExpenses.reduce((sum, e) => sum + e.amount, 0) + dayPurchases.reduce((sum, p) => sum + p.total, 0);
-    
-    return {
-      date: format(parseISO(date), 'MMM dd'),
-      revenue,
-      netProfit: profit - expenseTotal,
-      expenses: expenseTotal
-    };
-  });
+  const { start, end } = getActiveDateRange();
 
-  const totalRevenue = sales.reduce((sum, s) => sum + s.total, 0);
-  const totalProfit = sales.reduce((sum, s) => sum + s.profit, 0);
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0) + purchases.reduce((sum, p) => sum + p.total, 0);
-  const storeNetProfit = totalProfit - totalExpenses;
+  const isDateInRange = (dateStr: string) => {
+    if (!dateStr) return false;
+    const d = parseISO(dateStr);
+    return d >= start && d <= end;
+  };
 
-  // Manufacturing Calculations
-  const totalMfgSales = mfgSales.reduce((sum, s) => sum + s.totalAmount, 0);
-  const totalMfgCosts = mfgCycles.reduce((sum, c) => sum + c.manufacturingCost, 0) + mfgExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const mfgNetProfit = totalMfgSales - totalMfgCosts;
+  const filteredSales = sales.filter(s => isDateInRange(s.date));
+  const filteredExpenses = expenses.filter(e => isDateInRange(e.date));
+  const filteredPurchases = purchases.filter(p => isDateInRange(p.date));
+  const filteredMfgSales = mfgSales.filter(s => isDateInRange(s.date));
+  const filteredMfgCycles = mfgCycles.filter(c => isDateInRange(c.startDate));
+  const filteredMfgExpenses = mfgExpenses.filter(e => isDateInRange(e.date));
+
+  let displaySales = filteredSales;
+  let displayExpenses = filteredExpenses;
+  let displayPurchases = filteredPurchases;
+  let displayMfgSales = filteredMfgSales;
+  let displayMfgCycles = filteredMfgCycles;
+  let displayMfgExpenses = filteredMfgExpenses;
+
+  if (sourceFilter === 'store') {
+    displayMfgSales = [];
+    displayMfgCycles = [];
+    displayMfgExpenses = [];
+  } else if (sourceFilter === 'mfg') {
+    displaySales = [];
+    displayExpenses = [];
+    displayPurchases = [];
+  }
+
+  const totalStoreRevenue = displaySales.reduce((sum, s) => sum + s.total, 0);
+  const totalStoreProfit = displaySales.reduce((sum, s) => sum + s.profit, 0);
+  const totalStoreExpenses = displayExpenses.reduce((sum, e) => sum + e.amount, 0) + displayPurchases.reduce((sum, p) => sum + p.total, 0);
+  const storeNetProfit = totalStoreProfit - totalStoreExpenses;
+
+  const totalMfgRevenue = displayMfgSales.reduce((sum, s) => sum + s.totalAmount, 0);
+  const totalMfgCosts = displayMfgCycles.reduce((sum, c) => sum + c.manufacturingCost, 0) + displayMfgExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const mfgNetProfit = totalMfgRevenue - totalMfgCosts;
   const zeinaMfgShare = mfgNetProfit * 0.5;
 
+  const totalRevenue = totalStoreRevenue + totalMfgRevenue;
   const combinedNetProfit = storeNetProfit + zeinaMfgShare;
+  const totalExpenses = totalStoreExpenses + totalMfgCosts;
+
+  const daysDiff = differenceInDays(end, start);
+  const useMonths = daysDiff > 60;
+
+  const intervals = useMonths 
+    ? eachMonthOfInterval({ start, end })
+    : eachDayOfInterval({ start, end });
+
+  const chartData = intervals.map(date => {
+    const dateStr = format(date, useMonths ? 'yyyy-MM' : 'yyyy-MM-dd');
+    
+    const periodSales = displaySales.filter(s => s.date.startsWith(dateStr));
+    const periodExpenses = displayExpenses.filter(e => e.date.startsWith(dateStr));
+    const periodPurchases = displayPurchases.filter(p => p.date.startsWith(dateStr));
+    const periodMfgSales = displayMfgSales.filter(s => s.date.startsWith(dateStr));
+    const periodMfgCycles = displayMfgCycles.filter(c => c.startDate.startsWith(dateStr));
+    const periodMfgExpenses = displayMfgExpenses.filter(e => e.date.startsWith(dateStr));
+
+    const rev = periodSales.reduce((sum, s) => sum + s.total, 0) + periodMfgSales.reduce((sum, s) => sum + s.totalAmount, 0);
+    const storeProf = periodSales.reduce((sum, s) => sum + s.profit, 0);
+    const storeExp = periodExpenses.reduce((sum, e) => sum + e.amount, 0) + periodPurchases.reduce((sum, p) => sum + p.total, 0);
+    const mfgProf = periodMfgSales.reduce((sum, s) => sum + s.totalAmount, 0) - (periodMfgCycles.reduce((sum, c) => sum + c.manufacturingCost, 0) + periodMfgExpenses.reduce((sum, e) => sum + e.amount, 0));
+    
+    const netProf = (storeProf - storeExp) + (mfgProf * 0.5);
+    const exp = storeExp + periodMfgCycles.reduce((sum, c) => sum + c.manufacturingCost, 0) + periodMfgExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+    return {
+      date: format(date, useMonths ? 'MMM yyyy' : 'MMM dd'),
+      revenue: rev,
+      netProfit: netProf,
+      expenses: exp
+    };
+  });
 
   const lowStockProducts = products.filter(p => p.stock <= p.minStock);
   const expiringProducts = products.filter(p => p.expiryDate && isAfter(new Date(), subDays(parseISO(p.expiryDate), 30)));
 
   return (
     <div className="space-y-6" dir="rtl">
-      <h1 className="text-2xl font-bold text-gray-900">نظرة عامة على لوحة التحكم</h1>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-2xl font-bold text-gray-900">نظرة عامة على لوحة التحكم</h1>
+        
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+            <button
+              onClick={() => setSourceFilter('all')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${sourceFilter === 'all' ? 'bg-pink-100 text-pink-700' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              الكل
+            </button>
+            <button
+              onClick={() => setSourceFilter('store')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${sourceFilter === 'store' ? 'bg-pink-100 text-pink-700' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              المتجر فقط
+            </button>
+            <button
+              onClick={() => setSourceFilter('mfg')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${sourceFilter === 'mfg' ? 'bg-pink-100 text-pink-700' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              التصنيع فقط
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-2 shadow-sm">
+            <Calendar className="w-5 h-5 text-gray-400" />
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value as any)}
+              className="bg-transparent border-none text-sm font-medium text-gray-700 focus:ring-0 cursor-pointer"
+            >
+              <option value="currentMonth">الشهر الحالي</option>
+              <option value="prevMonth">الشهر السابق</option>
+              <option value="currentQuarter">الربع الحالي</option>
+              <option value="currentHalf">النصف الحالي</option>
+              <option value="currentYear">السنة الحالية</option>
+              <option value="custom">فترة مخصصة</option>
+            </select>
+          </div>
+
+          {dateFilter === 'custom' && (
+            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-2 shadow-sm">
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="text-sm border-none focus:ring-0 p-0 text-gray-700"
+              />
+              <span className="text-gray-400">-</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="text-sm border-none focus:ring-0 p-0 text-gray-700"
+              />
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -105,13 +240,15 @@ export const Dashboard: React.FC = () => {
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 font-medium">صافي الربح الكلي (شامل التصنيع)</h3>
-            <div className="p-2 bg-indigo-100 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-indigo-600" />
+            <h3 className="text-gray-500 font-medium">صافي الربح الكلي</h3>
+            <div className="p-2 bg-pink-100 rounded-lg">
+              <TrendingUp className="w-6 h-6 text-pink-600" />
             </div>
           </div>
           <p className="text-3xl font-bold text-gray-900">{formatCurrency(combinedNetProfit)} ج.س</p>
-          <p className="text-sm text-gray-500 mt-2">نصيب زينة من التصنيع: {formatCurrency(zeinaMfgShare)}</p>
+          {(sourceFilter === 'all' || sourceFilter === 'mfg') && (
+            <p className="text-sm text-gray-500 mt-2">نصيب زينة من التصنيع: {formatCurrency(zeinaMfgShare)}</p>
+          )}
         </div>
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
@@ -138,10 +275,10 @@ export const Dashboard: React.FC = () => {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-          <h3 className="text-lg font-bold text-gray-900 mb-6">الإيرادات والأرباح (آخر 30 يوماً)</h3>
+          <h3 className="text-lg font-bold text-gray-900 mb-6">الإيرادات والأرباح</h3>
           <div className="h-80" dir="ltr">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={salesByDay}>
+              <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} tickFormatter={(value) => `${formatCurrency(value)} ج.س`} />
@@ -157,10 +294,10 @@ export const Dashboard: React.FC = () => {
         </div>
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-          <h3 className="text-lg font-bold text-gray-900 mb-6">المصروفات (آخر 30 يوماً)</h3>
+          <h3 className="text-lg font-bold text-gray-900 mb-6">المصروفات</h3>
           <div className="h-80" dir="ltr">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={salesByDay}>
+              <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} tickFormatter={(value) => `${formatCurrency(value)} ج.س`} />

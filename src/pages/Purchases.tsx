@@ -135,14 +135,14 @@ export const Purchases: React.FC = () => {
               placeholder="البحث باسم المورد أو رقم العملية..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
             />
             <Search className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" />
           </div>
           {user?.role === 'admin' && (
             <button
               onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-sm whitespace-nowrap"
+              className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl hover:bg-pink-700 transition-colors shadow-sm whitespace-nowrap"
             >
               <Plus className="w-5 h-5" />
               فاتورة مشتريات
@@ -167,14 +167,14 @@ export const Purchases: React.FC = () => {
                 <tr key={purchase.id} className="hover:bg-gray-50 transition-colors">
                   <td className="p-4 border-b border-gray-100">{format(parseISO(purchase.date), 'yyyy/MM/dd HH:mm')}</td>
                   <td className="p-4 border-b border-gray-100 font-medium">{purchase.supplierName}</td>
-                  <td className="p-4 border-b border-gray-100 font-bold text-indigo-600">
+                  <td className="p-4 border-b border-gray-100 font-bold text-pink-600">
                     {formatCurrency(purchase.total)} ج.س
                   </td>
                   <td className="p-4 border-b border-gray-100 text-center">
                     <div className="flex justify-center gap-2">
                       <button
                         onClick={() => setSelectedPurchase(purchase)}
-                        className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                        className="p-2 text-pink-600 hover:bg-pink-50 rounded-lg transition-colors"
                         title="عرض التفاصيل"
                       >
                         <Eye className="w-5 h-5" />
@@ -218,7 +218,7 @@ export const Purchases: React.FC = () => {
                   required
                   value={supplierName}
                   onChange={(e) => setSupplierName(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
                   placeholder="أدخل اسم المورد..."
                 />
               </div>
@@ -235,7 +235,7 @@ export const Purchases: React.FC = () => {
                         const p = products.find(prod => prod.id === e.target.value);
                         if (p) setCost(p.cost.toString());
                       }}
-                      className="w-full p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="w-full p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
                     >
                       <option value="">-- اختر المنتج --</option>
                       {products.map(p => (
@@ -250,7 +250,7 @@ export const Purchases: React.FC = () => {
                       min="1"
                       value={qty}
                       onChange={(e) => setQty(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="w-full p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
                     />
                   </div>
                   <div>
@@ -261,7 +261,7 @@ export const Purchases: React.FC = () => {
                       step="0.01"
                       value={cost}
                       onChange={(e) => setCost(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="w-full p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
                     />
                   </div>
                 </div>
@@ -269,7 +269,7 @@ export const Purchases: React.FC = () => {
                   type="button"
                   onClick={handleAddToCart}
                   disabled={!selectedProduct || !qty || !cost}
-                  className="w-full py-3 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl font-medium transition-colors disabled:opacity-50"
+                  className="w-full py-3 bg-pink-100 hover:bg-pink-200 text-pink-700 rounded-xl font-medium transition-colors disabled:opacity-50"
                 >
                   إضافة للفاتورة
                 </button>
@@ -308,7 +308,7 @@ export const Purchases: React.FC = () => {
                       ))}
                     </tbody>
                   </table>
-                  <div className="text-xl font-bold text-indigo-600 text-left">
+                  <div className="text-xl font-bold text-pink-600 text-left">
                     الإجمالي: {formatCurrency(cart.reduce((sum, item) => sum + (item.cost * item.qty), 0))} ج.س
                   </div>
                 </div>
@@ -325,7 +325,7 @@ export const Purchases: React.FC = () => {
                 <button
                   type="submit"
                   disabled={cart.length === 0 || !supplierName}
-                  className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors shadow-sm disabled:opacity-50"
+                  className="flex-1 py-3 px-4 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-medium transition-colors shadow-sm disabled:opacity-50"
                 >
                   حفظ الفاتورة
                 </button>
@@ -364,7 +364,7 @@ export const Purchases: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">الإجمالي</p>
-                <p className="font-bold text-indigo-600">{formatCurrency(selectedPurchase.total)} ج.س</p>
+                <p className="font-bold text-pink-600">{formatCurrency(selectedPurchase.total)} ج.س</p>
               </div>
             </div>
 
