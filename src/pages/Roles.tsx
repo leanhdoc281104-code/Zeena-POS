@@ -98,59 +98,75 @@ export const Roles: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6" dir="rtl">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 print:space-y-4" dir="rtl">
+      <div className="flex justify-between items-center print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">إدارة الأدوار والحسابات</h1>
-        {currentUser?.role === 'admin' && (
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => setIsModalOpen(true)}
-            className="bg-pink-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-pink-700 transition-colors"
+            onClick={() => window.print()}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
           >
-            <Plus className="w-5 h-5" />
-            إضافة حساب جديد
+            طباعة
           </button>
-        )}
+          {currentUser?.role === 'admin' && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="bg-pink-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-pink-700 transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+              إضافة حساب جديد
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+      {/* Print Header */}
+      <div className="hidden print:block text-center mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">تقرير الأدوار والحسابات</h1>
+        <p className="text-gray-600">
+          تاريخ الطباعة: {format(new Date(), 'yyyy/MM/dd')}
+        </p>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden print:border-none print:shadow-none">
+        <div className="overflow-x-auto print:overflow-visible">
           <table className="w-full text-right border-collapse">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 print:bg-transparent">
               <tr>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">الاسم</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">البريد الإلكتروني</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">الدور</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">تاريخ الإنشاء</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">الاسم</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">البريد الإلكتروني</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">الدور</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">تاريخ الإنشاء</th>
                 {currentUser?.role === 'admin' && (
-                  <th className="p-4 font-medium text-gray-600 border-b border-gray-200 text-center">الإجراءات</th>
+                  <th className="p-4 font-medium text-gray-600 border-b border-gray-200 text-center print:hidden">الإجراءات</th>
                 )}
               </tr>
             </thead>
             <tbody>
               {users.map((user) => (
-                <tr key={user.uid} className="hover:bg-gray-50 transition-colors">
-                  <td className="p-4 border-b border-gray-100">
+                <tr key={user.uid} className="hover:bg-gray-50 transition-colors print:hover:bg-transparent">
+                  <td className="p-4 border-b border-gray-100 print:border-black">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center text-pink-600 font-bold">
+                      <div className="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center text-pink-600 font-bold print:hidden">
                         {user.name.charAt(0)}
                       </div>
-                      <span className="font-medium text-gray-900">{user.name}</span>
+                      <span className="font-medium text-gray-900 print:text-black">{user.name}</span>
                     </div>
                   </td>
-                  <td className="p-4 border-b border-gray-100 text-gray-600">{user.email}</td>
-                  <td className="p-4 border-b border-gray-100">
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                  <td className="p-4 border-b border-gray-100 text-gray-600 print:text-black print:border-black">{user.email}</td>
+                  <td className="p-4 border-b border-gray-100 print:border-black">
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium print:text-black print:bg-transparent print:border print:border-black ${
                       user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 
                       user.role === 'observer' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
                     }`}>
                       {user.role === 'admin' ? 'مدير' : user.role === 'observer' ? 'مراقب' : 'كاشير'}
                     </span>
                   </td>
-                  <td className="p-4 border-b border-gray-100 text-gray-600">
+                  <td className="p-4 border-b border-gray-100 text-gray-600 print:text-black print:border-black">
                     {user.createdAt ? format(parseISO(user.createdAt), 'yyyy/MM/dd') : '-'}
                   </td>
                   {currentUser?.role === 'admin' && (
-                    <td className="p-4 border-b border-gray-100 text-center">
+                    <td className="p-4 border-b border-gray-100 text-center print:hidden">
                       <button
                         onClick={() => handleDelete(user.uid)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"

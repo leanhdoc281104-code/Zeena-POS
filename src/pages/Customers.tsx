@@ -78,22 +78,38 @@ export const Customers: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6" dir="rtl">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-6 print:space-y-4" dir="rtl">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">العملاء والديون</h1>
-        {user?.role === 'admin' && (
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl hover:bg-pink-700 transition-colors shadow-sm"
+            onClick={() => window.print()}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
           >
-            <Plus className="w-5 h-5" />
-            إضافة عميل
+            طباعة
           </button>
-        )}
+          {user?.role === 'admin' && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl hover:bg-pink-700 transition-colors shadow-sm"
+            >
+              <Plus className="w-5 h-5" />
+              إضافة عميل
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[calc(100vh-12rem)]">
-        <div className="p-4 border-b border-gray-200">
+      {/* Print Header */}
+      <div className="hidden print:block text-center mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">تقرير العملاء والديون</h1>
+        <p className="text-gray-600">
+          تاريخ الطباعة: {format(new Date(), 'yyyy/MM/dd')}
+        </p>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[calc(100vh-12rem)] print:h-auto print:border-none print:shadow-none">
+        <div className="p-4 border-b border-gray-200 print:hidden">
           <div className="relative max-w-md">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
@@ -106,49 +122,49 @@ export const Customers: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto print:overflow-visible">
           <table className="w-full text-right border-collapse">
-            <thead className="bg-gray-50 sticky top-0 z-10">
+            <thead className="bg-gray-50 sticky top-0 z-10 print:static print:bg-transparent">
               <tr>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">العميل</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">رقم الهاتف</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">تاريخ الانضمام</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 text-left">رصيد الدين</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">العميل</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">رقم الهاتف</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">تاريخ الانضمام</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 text-left print:text-black print:border-black">رصيد الدين</th>
                 {user?.role === 'admin' && (
-                  <th className="p-4 font-medium text-gray-600 border-b border-gray-200 text-left">الإجراءات</th>
+                  <th className="p-4 font-medium text-gray-600 border-b border-gray-200 text-left print:hidden">الإجراءات</th>
                 )}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {filteredCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-gray-500">
-                    <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <td colSpan={5} className="p-8 text-center text-gray-500 print:text-black">
+                    <Users className="w-12 h-12 mx-auto mb-3 opacity-50 print:hidden" />
                     <p>لم يتم العثور على عملاء.</p>
                   </td>
                 </tr>
               ) : (
                 filteredCustomers.map(customer => (
-                  <tr key={customer.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="p-4">
+                  <tr key={customer.id} className="hover:bg-gray-50 transition-colors print:hover:bg-transparent">
+                    <td className="p-4 print:border-b print:border-black">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center font-bold">
+                        <div className="w-10 h-10 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center font-bold print:hidden">
                           {customer.name.charAt(0).toUpperCase()}
                         </div>
-                        <p className="font-medium text-gray-900">{customer.name}</p>
+                        <p className="font-medium text-gray-900 print:text-black">{customer.name}</p>
                       </div>
                     </td>
-                    <td className="p-4 text-gray-600">{customer.phone}</td>
-                    <td className="p-4 text-gray-600">
+                    <td className="p-4 text-gray-600 print:text-black print:border-b print:border-black">{customer.phone}</td>
+                    <td className="p-4 text-gray-600 print:text-black print:border-b print:border-black">
                       {customer.createdAt ? format(parseISO(customer.createdAt), 'MMM dd, yyyy') : '-'}
                     </td>
-                    <td className="p-4 text-left">
-                      <span className={`font-bold ${customer.debtBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    <td className="p-4 text-left print:border-b print:border-black">
+                      <span className={`font-bold ${customer.debtBalance > 0 ? 'text-red-600' : 'text-green-600'} print:text-black`}>
                         {formatCurrency(customer.debtBalance)} ج.س
                       </span>
                     </td>
                     {user?.role === 'admin' && (
-                      <td className="p-4 text-left">
+                      <td className="p-4 text-left print:hidden">
                         {customer.debtBalance > 0 && (
                           <button
                             onClick={() => {

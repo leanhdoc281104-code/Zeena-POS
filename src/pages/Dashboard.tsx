@@ -7,6 +7,8 @@ import { TrendingUp, TrendingDown, DollarSign, Package, AlertTriangle, Filter, C
 import { format, subDays, isAfter, parseISO, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter, startOfYear, endOfYear, eachDayOfInterval, eachMonthOfInterval, differenceInDays, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrency } from '../utils/format';
 
+import { ExportButtons } from '../components/ExportButtons';
+
 export const Dashboard: React.FC = () => {
   const [sales, setSales] = useState<Sale[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -164,8 +166,8 @@ export const Dashboard: React.FC = () => {
   const expiringProducts = products.filter(p => p.expiryDate && isAfter(new Date(), subDays(parseISO(p.expiryDate), 30)));
 
   return (
-    <div className="space-y-6" dir="rtl">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-6 print:space-y-4" dir="rtl">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">نظرة عامة على لوحة التحكم</h1>
         
         <div className="flex flex-wrap items-center gap-3">
@@ -223,59 +225,79 @@ export const Dashboard: React.FC = () => {
               />
             </div>
           )}
+          <ExportButtons 
+            data={chartData.map(d => ({
+              'التاريخ': d.date,
+              'الإيرادات': d.revenue,
+              'المصروفات': d.expenses,
+              'صافي الربح': d.netProfit
+            }))} 
+            filename="تقرير_لوحة_التحكم" 
+          />
         </div>
       </div>
 
+      {/* Print Header */}
+      <div className="hidden print:block text-center mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">تقرير لوحة التحكم</h1>
+        <p className="text-gray-600">
+          الفترة: {format(start, 'yyyy/MM/dd')} - {format(end, 'yyyy/MM/dd')}
+        </p>
+        <p className="text-gray-600">
+          المصدر: {sourceFilter === 'all' ? 'الكل' : sourceFilter === 'store' ? 'المتجر فقط' : 'التصنيع فقط'}
+        </p>
+      </div>
+
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 print:grid-cols-4 print:gap-4">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 print:border-black print:shadow-none">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 font-medium">إجمالي الإيرادات</h3>
-            <div className="p-2 bg-green-100 rounded-lg">
+            <h3 className="text-gray-500 font-medium print:text-black">إجمالي الإيرادات</h3>
+            <div className="p-2 bg-green-100 rounded-lg print:hidden">
               <DollarSign className="w-6 h-6 text-green-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{formatCurrency(totalRevenue)} ج.س</p>
+          <p className="text-3xl font-bold text-gray-900 print:text-black">{formatCurrency(totalRevenue)} ج.س</p>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 print:border-black print:shadow-none">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 font-medium">صافي الربح الكلي</h3>
-            <div className="p-2 bg-pink-100 rounded-lg">
+            <h3 className="text-gray-500 font-medium print:text-black">صافي الربح الكلي</h3>
+            <div className="p-2 bg-pink-100 rounded-lg print:hidden">
               <TrendingUp className="w-6 h-6 text-pink-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{formatCurrency(combinedNetProfit)} ج.س</p>
+          <p className="text-3xl font-bold text-gray-900 print:text-black">{formatCurrency(combinedNetProfit)} ج.س</p>
           {(sourceFilter === 'all' || sourceFilter === 'mfg') && (
-            <p className="text-sm text-gray-500 mt-2">نصيب زينة من التصنيع: {formatCurrency(zeinaMfgShare)}</p>
+            <p className="text-sm text-gray-500 mt-2 print:text-black">نصيب زينة من التصنيع: {formatCurrency(zeinaMfgShare)}</p>
           )}
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 print:border-black print:shadow-none">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 font-medium">إجمالي المصروفات</h3>
-            <div className="p-2 bg-red-100 rounded-lg">
+            <h3 className="text-gray-500 font-medium print:text-black">إجمالي المصروفات</h3>
+            <div className="p-2 bg-red-100 rounded-lg print:hidden">
               <TrendingDown className="w-6 h-6 text-red-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{formatCurrency(totalExpenses)} ج.س</p>
+          <p className="text-3xl font-bold text-gray-900 print:text-black">{formatCurrency(totalExpenses)} ج.س</p>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 print:border-black print:shadow-none">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 font-medium">إجمالي المنتجات</h3>
-            <div className="p-2 bg-blue-100 rounded-lg">
+            <h3 className="text-gray-500 font-medium print:text-black">إجمالي المنتجات</h3>
+            <div className="p-2 bg-blue-100 rounded-lg print:hidden">
               <Package className="w-6 h-6 text-blue-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{products.length}</p>
+          <p className="text-3xl font-bold text-gray-900 print:text-black">{products.length}</p>
         </div>
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-          <h3 className="text-lg font-bold text-gray-900 mb-6">الإيرادات والأرباح</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print:block print:space-y-8">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 print:border-black print:shadow-none print:break-inside-avoid">
+          <h3 className="text-lg font-bold text-gray-900 mb-6 print:text-black">الإيرادات والأرباح</h3>
           <div className="h-80" dir="ltr">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData}>
@@ -293,8 +315,8 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-          <h3 className="text-lg font-bold text-gray-900 mb-6">المصروفات</h3>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 print:border-black print:shadow-none print:break-inside-avoid">
+          <h3 className="text-lg font-bold text-gray-900 mb-6 print:text-black">المصروفات</h3>
           <div className="h-80" dir="ltr">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
@@ -314,45 +336,45 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {/* Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print:block print:space-y-8">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 print:border-black print:shadow-none print:break-inside-avoid">
           <div className="flex items-center gap-3 mb-6">
-            <AlertTriangle className="w-6 h-6 text-amber-500" />
-            <h3 className="text-lg font-bold text-gray-900">تنبيهات نقص المخزون</h3>
+            <AlertTriangle className="w-6 h-6 text-amber-500 print:hidden" />
+            <h3 className="text-lg font-bold text-gray-900 print:text-black">تنبيهات نقص المخزون</h3>
           </div>
           <div className="space-y-4">
             {lowStockProducts.length === 0 ? (
-              <p className="text-gray-500">جميع المنتجات متوفرة بكميات كافية.</p>
+              <p className="text-gray-500 print:text-black">جميع المنتجات متوفرة بكميات كافية.</p>
             ) : (
               lowStockProducts.map(p => (
-                <div key={p.id} className="flex items-center justify-between p-4 bg-amber-50 rounded-xl border border-amber-100">
+                <div key={p.id} className="flex items-center justify-between p-4 bg-amber-50 rounded-xl border border-amber-100 print:bg-transparent print:border-black">
                   <div>
-                    <h4 className="font-medium text-gray-900">{p.name}</h4>
-                    <p className="text-sm text-amber-700">الحد الأدنى: {p.minStock} {p.unit === 'piece' ? 'قطعة' : 'وزن'}</p>
+                    <h4 className="font-medium text-gray-900 print:text-black">{p.name}</h4>
+                    <p className="text-sm text-amber-700 print:text-black">الحد الأدنى: {p.minStock} {p.unit === 'piece' ? 'قطعة' : 'وزن'}</p>
                   </div>
-                  <span className="text-lg font-bold text-amber-600">{p.stock} متبقي</span>
+                  <span className="text-lg font-bold text-amber-600 print:text-black">{p.stock} متبقي</span>
                 </div>
               ))
             )}
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 print:border-black print:shadow-none print:break-inside-avoid">
           <div className="flex items-center gap-3 mb-6">
-            <AlertTriangle className="w-6 h-6 text-red-500" />
-            <h3 className="text-lg font-bold text-gray-900">قريباً تنتهي صلاحيته</h3>
+            <AlertTriangle className="w-6 h-6 text-red-500 print:hidden" />
+            <h3 className="text-lg font-bold text-gray-900 print:text-black">قريباً تنتهي صلاحيته</h3>
           </div>
           <div className="space-y-4">
             {expiringProducts.length === 0 ? (
-              <p className="text-gray-500">لا توجد منتجات تنتهي صلاحيتها خلال 30 يوماً.</p>
+              <p className="text-gray-500 print:text-black">لا توجد منتجات تنتهي صلاحيتها خلال 30 يوماً.</p>
             ) : (
               expiringProducts.map(p => (
-                <div key={p.id} className="flex items-center justify-between p-4 bg-red-50 rounded-xl border border-red-100">
+                <div key={p.id} className="flex items-center justify-between p-4 bg-red-50 rounded-xl border border-red-100 print:bg-transparent print:border-black">
                   <div>
-                    <h4 className="font-medium text-gray-900">{p.name}</h4>
-                    <p className="text-sm text-red-700">المخزون: {p.stock} {p.unit === 'piece' ? 'قطعة' : 'وزن'}</p>
+                    <h4 className="font-medium text-gray-900 print:text-black">{p.name}</h4>
+                    <p className="text-sm text-red-700 print:text-black">المخزون: {p.stock} {p.unit === 'piece' ? 'قطعة' : 'وزن'}</p>
                   </div>
-                  <span className="text-sm font-bold text-red-600">
+                  <span className="text-sm font-bold text-red-600 print:text-black">
                     {p.expiryDate ? format(parseISO(p.expiryDate), 'MMM dd, yyyy') : 'غير متوفر'}
                   </span>
                 </div>

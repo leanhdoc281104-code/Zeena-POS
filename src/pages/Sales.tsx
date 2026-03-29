@@ -4,14 +4,18 @@ import { db } from '../firebase';
 import { Sale } from '../types';
 import { Search, Trash2, Eye } from 'lucide-react';
 import { useAuth } from '../AuthContext';
-import { format, parseISO, isToday, isThisWeek, isThisMonth } from 'date-fns';
+import { format, parseISO, isToday, isThisWeek, isThisMonth, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrency } from '../utils/format';
+import { ExportButtons } from '../components/ExportButtons';
+import { DateRangeFilter } from '../components/DateRangeFilter';
 
 export const Sales: React.FC = () => {
   const { user } = useAuth();
   const [sales, setSales] = useState<Sale[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [timeFilter, setTimeFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [productFilter, setProductFilter] = useState('');
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
 
@@ -44,6 +48,12 @@ export const Sales: React.FC = () => {
     if (timeFilter === 'today') matchesTime = isToday(saleDate);
     else if (timeFilter === 'week') matchesTime = isThisWeek(saleDate);
     else if (timeFilter === 'month') matchesTime = isThisMonth(saleDate);
+    else if (timeFilter === 'custom' && startDate && endDate) {
+      matchesTime = isWithinInterval(saleDate, {
+        start: startOfDay(parseISO(startDate)),
+        end: endOfDay(parseISO(endDate))
+      });
+    }
 
     let matchesProduct = true;
     if (productFilter) {
@@ -53,64 +63,84 @@ export const Sales: React.FC = () => {
     return matchesSearch && matchesTime && matchesProduct;
   });
 
+  const exportData = filteredSales.map(sale => ({
+    'رقم الإيصال': sale.id,
+    'التاريخ': format(parseISO(sale.date), 'yyyy/MM/dd HH:mm'),
+    'الإجمالي': sale.total,
+    'طريقة الدفع': sale.paymentMethod === 'cash' ? 'نقدي' : sale.paymentMethod === 'card' ? 'بطاقة' : sale.paymentMethod === 'bankak' ? 'بنكك' : 'آجل',
+    'المنتجات': sale.items.map(item => `${item.name} (${item.qty})`).join('، ')
+  }));
+
   return (
     <div className="space-y-6" dir="rtl">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">تتبع المبيعات</h1>
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-          <select
-            value={timeFilter}
-            onChange={(e) => setTimeFilter(e.target.value)}
-            className="px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none bg-white"
-          >
-            <option value="all">كل الأوقات</option>
-            <option value="today">اليوم</option>
-            <option value="week">هذا الأسبوع</option>
-            <option value="month">هذا الشهر</option>
-          </select>
-          
+        <ExportButtons data={exportData} filename="تقرير_المبيعات" />
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3 w-full print:hidden">
+        <select
+          value={timeFilter}
+          onChange={(e) => setTimeFilter(e.target.value)}
+          className="px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none bg-white"
+        >
+          <option value="all">كل الأوقات</option>
+          <option value="today">اليوم</option>
+          <option value="week">هذا الأسبوع</option>
+          <option value="month">هذا الشهر</option>
+          <option value="custom">فترة مخصصة</option>
+        </select>
+        
+        {timeFilter === 'custom' && (
+          <DateRangeFilter
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={setStartDate}
+            onEndDateChange={setEndDate}
+          />
+        )}
+        
+        <input
+          type="text"
+          placeholder="تصفية بالمنتج..."
+          value={productFilter}
+          onChange={(e) => setProductFilter(e.target.value)}
+          className="px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
+        />
+
+        <div className="relative w-full sm:w-64">
           <input
             type="text"
-            placeholder="تصفية بالمنتج..."
-            value={productFilter}
-            onChange={(e) => setProductFilter(e.target.value)}
-            className="px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
+            placeholder="البحث برقم الإيصال..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
           />
-
-          <div className="relative w-full sm:w-64">
-            <input
-              type="text"
-              placeholder="البحث برقم الإيصال..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
-            />
-            <Search className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" />
-          </div>
+          <Search className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" />
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden print:border-none print:shadow-none">
         <div className="overflow-x-auto">
           <table className="w-full text-right border-collapse">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 print:bg-transparent">
               <tr>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">رقم الإيصال</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">التاريخ</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">الإجمالي</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">طريقة الدفع</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 text-center">الإجراءات</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">رقم الإيصال</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">التاريخ</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">الإجمالي</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">طريقة الدفع</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 text-center print:hidden">الإجراءات</th>
               </tr>
             </thead>
             <tbody>
               {filteredSales.map((sale) => (
-                <tr key={sale.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="p-4 border-b border-gray-100 font-mono text-sm">{sale.id.slice(0, 8)}</td>
-                  <td className="p-4 border-b border-gray-100">{format(parseISO(sale.date), 'yyyy/MM/dd HH:mm')}</td>
-                  <td className="p-4 border-b border-gray-100 font-bold text-pink-600">
+                <tr key={sale.id} className="hover:bg-gray-50 transition-colors print:hover:bg-transparent">
+                  <td className="p-4 border-b border-gray-100 font-mono text-sm print:border-black print:text-black">{sale.id.slice(0, 8)}</td>
+                  <td className="p-4 border-b border-gray-100 print:border-black print:text-black">{format(parseISO(sale.date), 'yyyy/MM/dd HH:mm')}</td>
+                  <td className="p-4 border-b border-gray-100 font-bold text-pink-600 print:border-black print:text-black">
                     {formatCurrency(sale.total)} ج.س
                   </td>
-                  <td className="p-4 border-b border-gray-100">
+                  <td className="p-4 border-b border-gray-100 print:border-black print:text-black">
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                       sale.paymentMethod === 'cash' ? 'bg-green-100 text-green-700' :
                       sale.paymentMethod === 'card' ? 'bg-blue-100 text-blue-700' :
@@ -120,7 +150,7 @@ export const Sales: React.FC = () => {
                       {sale.paymentMethod === 'cash' ? 'نقدي' : sale.paymentMethod === 'card' ? 'بطاقة' : sale.paymentMethod === 'bankak' ? 'بنكك' : 'آجل'}
                     </span>
                   </td>
-                  <td className="p-4 border-b border-gray-100 text-center">
+                  <td className="p-4 border-b border-gray-100 text-center print:hidden">
                     <div className="flex justify-center gap-2">
                       <button
                         onClick={() => setSelectedSale(sale)}

@@ -6,6 +6,9 @@ import { Sale, Expense, Purchase, PartnershipSettings, ManufacturingCycle, Manuf
 import { formatCurrency } from '../utils/format';
 import { Users, DollarSign, PieChart as PieChartIcon, Save, TrendingUp } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { format, parseISO, isToday, isThisWeek, isThisMonth, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
+import { ExportButtons } from '../components/ExportButtons';
+import { DateRangeFilter } from '../components/DateRangeFilter';
 
 export const Partnership: React.FC = () => {
   const { user } = useAuth();
@@ -20,6 +23,9 @@ export const Partnership: React.FC = () => {
     partner2Paid: 0
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [timeFilter, setTimeFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {

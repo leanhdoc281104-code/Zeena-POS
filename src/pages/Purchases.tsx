@@ -4,8 +4,10 @@ import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Product, Purchase, PurchaseItem } from '../types';
 import { Plus, Search, Trash2, Package, Eye } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isToday, isThisWeek, isThisMonth, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrency } from '../utils/format';
+import { ExportButtons } from '../components/ExportButtons';
+import { DateRangeFilter } from '../components/DateRangeFilter';
 
 export const Purchases: React.FC = () => {
   const { user } = useAuth();
@@ -14,6 +16,10 @@ export const Purchases: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
+
+  const [timeFilter, setTimeFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const [supplierName, setSupplierName] = useState('');
   const [cart, setCart] = useState<PurchaseItem[]>([]);
@@ -119,26 +125,37 @@ export const Purchases: React.FC = () => {
     }
   };
 
-  const filteredPurchases = purchases.filter(p => 
-    p.supplierName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.id.includes(searchQuery)
-  );
+  const filteredPurchases = purchases.filter(p => {
+    const matchesSearch = p.supplierName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          p.id.includes(searchQuery);
+    
+    let matchesTime = true;
+    const purchaseDate = new Date(p.date);
+    if (timeFilter === 'today') matchesTime = isToday(purchaseDate);
+    else if (timeFilter === 'week') matchesTime = isThisWeek(purchaseDate);
+    else if (timeFilter === 'month') matchesTime = isThisMonth(purchaseDate);
+    else if (timeFilter === 'custom' && startDate && endDate) {
+      matchesTime = isWithinInterval(purchaseDate, {
+        start: startOfDay(parseISO(startDate)),
+        end: endOfDay(parseISO(endDate))
+      });
+    }
+
+    return matchesSearch && matchesTime;
+  });
+
+  const exportData = filteredPurchases.map(purchase => ({
+    'التاريخ': format(new Date(purchase.date), 'yyyy/MM/dd HH:mm'),
+    'المورد': purchase.supplierName,
+    'الإجمالي': purchase.total
+  }));
 
   return (
     <div className="space-y-6" dir="rtl">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">المشتريات</h1>
         <div className="flex items-center gap-4 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-72">
-            <input
-              type="text"
-              placeholder="البحث باسم المورد أو رقم العملية..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none"
-            />
-            <Search className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" />
-          </div>
+          <ExportButtons data={exportData} filename="تقرير_المشتريات" />
           {user?.role === 'admin' && (
             <button
               onClick={() => setIsModalOpen(true)}
@@ -151,26 +168,60 @@ export const Purchases: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="flex flex-col sm:flex-row gap-3 w-full print:hidden">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <input
+            type="text"
+            placeholder="البحث باسم المورد أو رقم العملية..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none bg-white"
+          />
+        </div>
+        
+        <select
+          value={timeFilter}
+          onChange={(e) => setTimeFilter(e.target.value)}
+          className="px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none bg-white"
+        >
+          <option value="all">كل الأوقات</option>
+          <option value="today">اليوم</option>
+          <option value="week">هذا الأسبوع</option>
+          <option value="month">هذا الشهر</option>
+          <option value="custom">فترة مخصصة</option>
+        </select>
+        
+        {timeFilter === 'custom' && (
+          <DateRangeFilter
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={setStartDate}
+            onEndDateChange={setEndDate}
+          />
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden print:border-none print:shadow-none">
         <div className="overflow-x-auto">
           <table className="w-full text-right border-collapse">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 print:bg-transparent">
               <tr>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">التاريخ</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">المورد</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">الإجمالي</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 text-center">الإجراءات</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">التاريخ</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">المورد</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">الإجمالي</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 text-center print:hidden">الإجراءات</th>
               </tr>
             </thead>
             <tbody>
               {filteredPurchases.map((purchase) => (
-                <tr key={purchase.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="p-4 border-b border-gray-100">{format(parseISO(purchase.date), 'yyyy/MM/dd HH:mm')}</td>
-                  <td className="p-4 border-b border-gray-100 font-medium">{purchase.supplierName}</td>
-                  <td className="p-4 border-b border-gray-100 font-bold text-pink-600">
+                <tr key={purchase.id} className="hover:bg-gray-50 transition-colors print:hover:bg-transparent">
+                  <td className="p-4 border-b border-gray-100 print:border-black print:text-black">{format(parseISO(purchase.date), 'yyyy/MM/dd HH:mm')}</td>
+                  <td className="p-4 border-b border-gray-100 font-medium print:border-black print:text-black">{purchase.supplierName}</td>
+                  <td className="p-4 border-b border-gray-100 font-bold text-pink-600 print:border-black print:text-black">
                     {formatCurrency(purchase.total)} ج.س
                   </td>
-                  <td className="p-4 border-b border-gray-100 text-center">
+                  <td className="p-4 border-b border-gray-100 text-center print:hidden">
                     <div className="flex justify-center gap-2">
                       <button
                         onClick={() => setSelectedPurchase(purchase)}
@@ -337,9 +388,9 @@ export const Purchases: React.FC = () => {
 
       {/* Purchase Details Modal */}
       {selectedPurchase && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 print:p-0 print:bg-white">
+          <div className="bg-white rounded-2xl w-full max-w-2xl p-6 shadow-xl max-h-[90vh] overflow-y-auto print:shadow-none print:max-h-none print:overflow-visible">
+            <div className="flex justify-between items-center mb-6 print:hidden">
               <h2 className="text-2xl font-bold text-gray-900">تفاصيل المشتريات</h2>
               <button
                 onClick={() => setSelectedPurchase(null)}
@@ -349,8 +400,13 @@ export const Purchases: React.FC = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-6 bg-gray-50 p-4 rounded-xl">
-              <div>
+            <div className="hidden print:block text-center mb-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">فاتورة مشتريات</h2>
+              <p className="text-gray-500">رقم: {selectedPurchase.id.slice(0, 8)}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-6 bg-gray-50 p-4 rounded-xl print:bg-transparent print:border print:border-gray-200">
+              <div className="print:hidden">
                 <p className="text-sm text-gray-500">رقم الإيصال</p>
                 <p className="font-mono font-medium">{selectedPurchase.id.slice(0, 8)}</p>
               </div>
@@ -364,13 +420,13 @@ export const Purchases: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">الإجمالي</p>
-                <p className="font-bold text-pink-600">{formatCurrency(selectedPurchase.total)} ج.س</p>
+                <p className="font-bold text-pink-600 print:text-gray-900">{formatCurrency(selectedPurchase.total)} ج.س</p>
               </div>
             </div>
 
             <h3 className="font-bold text-lg mb-4">المنتجات</h3>
             <table className="w-full text-right border-collapse mb-6">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 print:bg-gray-100">
                 <tr>
                   <th className="p-3 font-medium text-gray-600 border-b border-gray-200">المنتج</th>
                   <th className="p-3 font-medium text-gray-600 border-b border-gray-200 text-center">الكمية</th>
@@ -390,7 +446,13 @@ export const Purchases: React.FC = () => {
               </tbody>
             </table>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-3 print:hidden">
+              <button
+                onClick={() => window.print()}
+                className="px-6 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-medium transition-colors"
+              >
+                طباعة الفاتورة
+              </button>
               <button
                 onClick={() => setSelectedPurchase(null)}
                 className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors"

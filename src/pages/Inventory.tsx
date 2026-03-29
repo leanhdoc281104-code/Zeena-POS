@@ -9,6 +9,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { format, parseISO } from 'date-fns';
 import { compressImage } from '../utils/imageUtils';
 import { Toast } from '../components/Toast';
+import { ExportButtons } from '../components/ExportButtons';
 
 export const Inventory: React.FC = () => {
   const { user } = useAuth();
@@ -189,24 +190,39 @@ export const Inventory: React.FC = () => {
     p.barcode.includes(searchQuery)
   );
 
+  const exportData = filteredProducts.map(p => ({
+    'المنتج': p.name,
+    'الباركود': p.barcode,
+    'الفئة': p.category,
+    'سعر البيع': p.price,
+    'التكلفة': p.cost,
+    'المخزون الحالي': p.stock,
+    'الحد الأدنى': p.minStock,
+    'الوحدة': p.unit,
+    'تاريخ الانتهاء': p.expiryDate ? format(parseISO(p.expiryDate), 'yyyy/MM/dd') : 'لا يوجد'
+  }));
+
   return (
     <div className="space-y-6" dir="rtl">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">إدارة المخزون</h1>
-        {user?.role === 'admin' && (
-          <button
-            onClick={() => handleOpenModal()}
-            className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl hover:bg-pink-700 transition-colors shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-            إضافة منتج
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <ExportButtons data={exportData} filename="تقرير_المخزون" />
+          {user?.role === 'admin' && (
+            <button
+              onClick={() => handleOpenModal()}
+              className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl hover:bg-pink-700 transition-colors shadow-sm"
+            >
+              <Plus className="w-5 h-5" />
+              إضافة منتج
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[calc(100vh-12rem)]">
-        <div className="p-4 border-b border-gray-200">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[calc(100vh-12rem)] print:h-auto print:border-none print:shadow-none">
+        <div className="p-4 border-b border-gray-200 print:hidden">
           <div className="relative max-w-md">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
@@ -219,26 +235,26 @@ export const Inventory: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto print:overflow-visible">
           <table className="w-full text-right border-collapse">
-            <thead className="bg-gray-50 sticky top-0 z-10">
+            <thead className="bg-gray-50 sticky top-0 z-10 print:static print:bg-transparent">
               <tr>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">المنتج</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">الباركود</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">السعر / التكلفة</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">المخزون</th>
-                <th className="p-4 font-medium text-gray-600 border-b border-gray-200">تاريخ الانتهاء</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">المنتج</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">الباركود</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">السعر / التكلفة</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">المخزون</th>
+                <th className="p-4 font-medium text-gray-600 border-b border-gray-200 print:text-black print:border-black">تاريخ الانتهاء</th>
                 {user?.role === 'admin' && (
-                  <th className="p-4 font-medium text-gray-600 border-b border-gray-200 text-left">الإجراءات</th>
+                  <th className="p-4 font-medium text-gray-600 border-b border-gray-200 text-left print:hidden">الإجراءات</th>
                 )}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {filteredProducts.map(product => (
-                <tr key={product.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="p-4">
+                <tr key={product.id} className="hover:bg-gray-50 transition-colors print:hover:bg-transparent">
+                  <td className="p-4 print:border-b print:border-black">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+                      <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden shrink-0 print:hidden">
                         {product.imageUrl ? (
                           <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
                         ) : (
@@ -246,31 +262,31 @@ export const Inventory: React.FC = () => {
                         )}
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">{product.name}</p>
-                        <p className="text-sm text-gray-500">{product.category}</p>
+                        <p className="font-medium text-gray-900 print:text-black">{product.name}</p>
+                        <p className="text-sm text-gray-500 print:text-black">{product.category}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="p-4 text-gray-600 font-mono text-sm">{product.barcode}</td>
-                  <td className="p-4">
-                    <p className="font-medium text-gray-900">{formatCurrency(product.price)} ج.س</p>
+                  <td className="p-4 text-gray-600 font-mono text-sm print:text-black print:border-b print:border-black">{product.barcode}</td>
+                  <td className="p-4 print:border-b print:border-black">
+                    <p className="font-medium text-gray-900 print:text-black">{formatCurrency(product.price)} ج.س</p>
                     {user?.role === 'admin' && (
-                      <p className="text-sm text-gray-500">التكلفة: {formatCurrency(product.cost)} ج.س</p>
+                      <p className="text-sm text-gray-500 print:text-black">التكلفة: {formatCurrency(product.cost)} ج.س</p>
                     )}
                   </td>
-                  <td className="p-4">
+                  <td className="p-4 print:border-b print:border-black">
                     <div className="flex items-center gap-2">
-                      <span className={`font-medium ${product.stock <= product.minStock ? 'text-red-600' : 'text-gray-900'}`}>
+                      <span className={`font-medium ${product.stock <= product.minStock ? 'text-red-600' : 'text-gray-900'} print:text-black`}>
                         {product.stock}
                       </span>
-                      <span className="text-sm text-gray-500">{product.unit === 'piece' ? 'قطعة' : 'وزن'}</span>
+                      <span className="text-sm text-gray-500 print:text-black">{product.unit === 'piece' ? 'قطعة' : 'وزن'}</span>
                     </div>
                   </td>
-                  <td className="p-4 text-gray-600">
+                  <td className="p-4 text-gray-600 print:text-black print:border-b print:border-black">
                     {product.expiryDate ? format(parseISO(product.expiryDate), 'MMM dd, yyyy') : '-'}
                   </td>
                   {user?.role === 'admin' && (
-                    <td className="p-4 text-left">
+                    <td className="p-4 text-left print:hidden">
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => handleOpenModal(product)} className="p-2 text-gray-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-colors">
                           <Edit className="w-5 h-5" />
