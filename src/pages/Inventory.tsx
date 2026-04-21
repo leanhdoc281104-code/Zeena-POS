@@ -5,7 +5,7 @@ import { Product } from '../types';
 import { useAuth } from '../AuthContext';
 import { formatCurrency } from '../utils/format';
 import { Plus, Search, Edit, Trash2, Package, ScanLine, Image as ImageIcon } from 'lucide-react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { format, parseISO } from 'date-fns';
 import { compressImage } from '../utils/imageUtils';
 import { Toast } from '../components/Toast';
@@ -44,9 +44,24 @@ export const Inventory: React.FC = () => {
     let html5QrCode: Html5Qrcode | null = null;
 
     if (isScanning) {
-      html5QrCode = new Html5Qrcode('inventory-barcode-reader');
+      html5QrCode = new Html5Qrcode('inventory-barcode-reader', {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.QR_CODE,
+        ]
+      });
       
-      const config = { fps: 10, qrbox: { width: 300, height: 150 } };
+      const config = { 
+        fps: 20, 
+        qrbox: { width: 350, height: 150 },
+        useBarCodeDetectorIfSupported: true,
+        aspectRatio: 1.0
+      };
       
       html5QrCode.start(
         { facingMode: "environment" },

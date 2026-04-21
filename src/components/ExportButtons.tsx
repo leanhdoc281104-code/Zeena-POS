@@ -19,7 +19,7 @@ export const ExportButtons: React.FC<Props> = ({ data, filename }) => {
         <span className="hidden sm:inline">إكسل</span>
       </button>
       <button
-        onClick={printToPDF}
+        onClick={() => printToPDF(data, filename)}
         className="flex items-center gap-2 px-3 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm shadow-sm"
         title="طباعة / PDF"
       >

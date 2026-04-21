@@ -5,7 +5,7 @@ import { useAuth } from '../AuthContext';
 import { Product, SaleItem, Customer, StoreSettings } from '../types';
 import { Search, ScanLine, ShoppingCart, Plus, Minus, Trash2, CreditCard, Banknote, UserRound, Package, Printer, Bluetooth, Download, X } from 'lucide-react';
 import { Toast } from '../components/Toast';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { formatCurrency } from '../utils/format';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -60,9 +60,24 @@ export const POS: React.FC = () => {
     let html5QrCode: Html5Qrcode | null = null;
 
     if (isScanning) {
-      html5QrCode = new Html5Qrcode('reader');
+      html5QrCode = new Html5Qrcode('reader', {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.QR_CODE,
+        ]
+      });
       
-      const config = { fps: 10, qrbox: { width: 300, height: 150 } };
+      const config = { 
+        fps: 20, 
+        qrbox: { width: 350, height: 150 },
+        useBarCodeDetectorIfSupported: true,
+        aspectRatio: 1.0
+      };
       
       html5QrCode.start(
         { facingMode: "environment" },
