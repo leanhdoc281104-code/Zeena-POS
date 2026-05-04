@@ -1,9 +1,21 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let genAI: GoogleGenAI | null = null;
+
+function getGenAI() {
+  if (!genAI) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is not defined");
+    }
+    genAI = new GoogleGenAI({ apiKey });
+  }
+  return genAI;
+}
 
 export async function identifyProductByBarcode(barcode: string): Promise<{ name: string; price?: number; category?: string } | null> {
   try {
+    const ai = getGenAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Identify the product for barcode: ${barcode}. 

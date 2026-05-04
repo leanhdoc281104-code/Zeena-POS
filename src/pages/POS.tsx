@@ -122,6 +122,8 @@ export const POS: React.FC = () => {
       price: aiProduct.price || 0,
       cost: 0,
       stock: 999, // Assume infinite stock for unknown items
+      minStock: 0,
+      unit: 'piece',
       barcode: aiProduct.barcode,
       category: 'عام',
       createdAt: new Date().toISOString(),
