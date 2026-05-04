@@ -67,7 +67,9 @@ export const Sales: React.FC = () => {
     'رقم الإيصال': sale.id,
     'التاريخ': format(parseISO(sale.date), 'yyyy/MM/dd HH:mm'),
     'الإجمالي': sale.total,
-    'طريقة الدفع': sale.paymentMethod === 'cash' ? 'نقدي' : sale.paymentMethod === 'card' ? 'بطاقة' : sale.paymentMethod === 'bankak' ? 'بنكك' : 'آجل',
+    'طريقة الدفع': sale.paymentMethod === 'cash' ? 'نقدي' : 
+      sale.paymentMethod === 'bankak' ? 'بنكك' : 
+      sale.paymentMethod === 'fawry' ? 'فوري' : 'أووكاش',
     'المنتجات': sale.items.map(item => `${item.name} (${item.qty})`).join('، ')
   }));
 
@@ -143,11 +145,13 @@ export const Sales: React.FC = () => {
                   <td className="p-4 border-b border-gray-100 print:border-black print:text-black">
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                       sale.paymentMethod === 'cash' ? 'bg-green-100 text-green-700' :
-                      sale.paymentMethod === 'card' ? 'bg-blue-100 text-blue-700' :
                       sale.paymentMethod === 'bankak' ? 'bg-purple-100 text-purple-700' :
-                      'bg-orange-100 text-orange-700'
+                      sale.paymentMethod === 'fawry' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-blue-100 text-blue-700'
                     }`}>
-                      {sale.paymentMethod === 'cash' ? 'نقدي' : sale.paymentMethod === 'card' ? 'بطاقة' : sale.paymentMethod === 'bankak' ? 'بنكك' : 'آجل'}
+                      {sale.paymentMethod === 'cash' ? 'نقدي' : 
+                       sale.paymentMethod === 'bankak' ? 'بنكك' : 
+                       sale.paymentMethod === 'fawry' ? 'فوري' : 'أووكاش'}
                     </span>
                   </td>
                   <td className="p-4 border-b border-gray-100 text-center print:hidden">
@@ -210,7 +214,9 @@ export const Sales: React.FC = () => {
               <div>
                 <p className="text-sm text-gray-500">طريقة الدفع</p>
                 <p className="font-medium">
-                  {selectedSale.paymentMethod === 'cash' ? 'نقدي' : selectedSale.paymentMethod === 'card' ? 'بطاقة' : selectedSale.paymentMethod === 'bankak' ? 'بنكك' : 'آجل'}
+                  {selectedSale.paymentMethod === 'cash' ? 'نقدي' : 
+                   selectedSale.paymentMethod === 'bankak' ? 'بنكك' : 
+                   selectedSale.paymentMethod === 'fawry' ? 'فوري' : 'أووكاش'}
                 </p>
               </div>
               <div>

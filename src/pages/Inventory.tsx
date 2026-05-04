@@ -4,8 +4,7 @@ import { db } from '../firebase';
 import { Product } from '../types';
 import { useAuth } from '../AuthContext';
 import { formatCurrency } from '../utils/format';
-import { Plus, Search, Edit, Trash2, Package, ScanLine, Image as ImageIcon } from 'lucide-react';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { Plus, Search, Edit, Trash2, Package, Image as ImageIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { compressImage } from '../utils/imageUtils';
 import { Toast } from '../components/Toast';
@@ -16,7 +15,6 @@ export const Inventory: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
@@ -40,82 +38,6 @@ export const Inventory: React.FC = () => {
     return () => unsub();
   }, []);
 
-  useEffect(() => {
-    let html5QrCode: Html5Qrcode | null = null;
-
-    if (isScanning) {
-      html5QrCode = new Html5Qrcode('inventory-barcode-reader', {
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.QR_CODE,
-        ]
-      });
-      
-      const config = { 
-        fps: 20, 
-        qrbox: { width: 350, height: 150 },
-        useBarCodeDetectorIfSupported: true,
-        aspectRatio: 1.0
-      };
-      
-      html5QrCode.start(
-        { facingMode: "environment" },
-        config,
-        (decodedText) => {
-          // Play beep sound
-          try {
-            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            
-            oscillator.type = 'sine';
-            oscillator.frequency.value = 800; // Beep frequency
-            
-            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-            gainNode.gain.linearRampToValueAtTime(1, audioContext.currentTime + 0.01);
-            gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.1);
-            
-            oscillator.start(audioContext.currentTime);
-            oscillator.stop(audioContext.currentTime + 0.1);
-          } catch (e) {
-            console.error("Audio play failed", e);
-          }
-
-          setFormData(prev => ({ ...prev, barcode: decodedText }));
-          setIsScanning(false);
-        },
-        (errorMessage) => {
-          // Ignore scan errors
-        }
-      ).catch((err) => {
-        console.error("Error starting scanner", err);
-        const errorMsg = err?.toString() || '';
-        if (errorMsg.includes('NotAllowedError') || errorMsg.includes('Permission dismissed')) {
-          setToast({ message: 'الرجاء السماح بالوصول إلى الكاميرا لاستخدام الماسح الضوئي.', type: 'error' });
-        } else {
-          setToast({ message: 'فشل تشغيل الكاميرا', type: 'error' });
-        }
-        setIsScanning(false);
-      });
-    }
-
-    return () => {
-      if (html5QrCode && html5QrCode.isScanning) {
-        html5QrCode.stop().then(() => {
-          html5QrCode?.clear();
-        }).catch(console.error);
-      }
-    };
-  }, [isScanning]);
-
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -130,7 +52,6 @@ export const Inventory: React.FC = () => {
   };
 
   const handleOpenModal = (product?: Product) => {
-    setIsScanning(false);
     if (product) {
       setEditingProduct(product);
       setFormData({
@@ -334,23 +255,8 @@ export const Inventory: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">الباركود</label>
                   <div className="flex gap-2">
-                    <input type="text" value={formData.barcode} onChange={e => setFormData({...formData, barcode: e.target.value})} className="flex-1 p-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none" />
-                    <button type="button" onClick={() => setIsScanning(!isScanning)} className={`px-3 py-2 rounded-xl border transition-colors ${isScanning ? 'bg-red-50 text-red-600 border-red-200' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}>
-                      <ScanLine className="w-5 h-5" />
-                    </button>
+                    <input type="text" value={formData.barcode} onChange={e => setFormData({...formData, barcode: e.target.value})} className="w-full p-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none" placeholder="اكتب رقم الباركود هنا..." />
                   </div>
-                  {isScanning && (
-                    <div className="mt-2 p-4 bg-white rounded-xl shadow-sm border border-gray-200 relative overflow-hidden flex justify-center">
-                      <div className="relative w-full max-w-sm">
-                        <div id="inventory-barcode-reader" className="w-full rounded-lg overflow-hidden"></div>
-                        <div className="absolute top-0 left-0 w-full h-full pointer-events-none flex items-center justify-center">
-                           <div className="w-[300px] h-[150px] relative border-2 border-pink-500 rounded-lg overflow-hidden">
-                             <div className="absolute left-0 w-full h-1 bg-pink-500 shadow-[0_0_10px_#ec4899] animate-scan"></div>
-                           </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">سعر البيع *</label>

@@ -38,7 +38,7 @@ export interface Sale {
   total: number;
   profit: number;
   discount?: number;
-  paymentMethod: 'cash' | 'card' | 'debt' | 'bankak';
+  paymentMethod: 'cash' | 'bankak' | 'fawry' | 'oocash';
   receiptUrl?: string;
   date: string;
   cashierId: string;

@@ -3,24 +3,41 @@ import { collection, onSnapshot, addDoc, doc, updateDoc, increment, serverTimest
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Product, SaleItem, Customer, StoreSettings } from '../types';
-import { Search, ScanLine, ShoppingCart, Plus, Minus, Trash2, CreditCard, Banknote, UserRound, Package, Printer, Bluetooth, Download, X } from 'lucide-react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, CreditCard, Banknote, UserRound, Package, Bluetooth, Download, X } from 'lucide-react';
 import { Toast } from '../components/Toast';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { formatCurrency } from '../utils/format';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+
 import { printReceiptBluetooth } from '../utils/bluetooth';
+import { generateReceiptImage } from '../utils/receiptGenerator';
+import { identifyProductByBarcode } from '../services/geminiService';
+import { Brain, Sparkles, Loader2, Printer } from 'lucide-react';
 
 export const POS: React.FC = () => {
+  const [isPrintingBluetooth, setIsPrintingBluetooth] = useState(false);
+
+  const handleBluetoothPrint = async (saleData: any) => {
+    setIsPrintingBluetooth(true);
+    try {
+      const buffer = await generateReceiptImage(saleData, storeSettings);
+      await printReceiptBluetooth(buffer);
+      setToast({ message: 'تم إرسال الفاتورة للطابعة بنجاح.', type: 'success' });
+    } catch (error) {
+      console.error('Bluetooth print error:', error);
+      setToast({ message: 'فشل في الاتصال بالطابعة. تأكد من تشغيل البلوتوث.', type: 'error' });
+    } finally {
+      setIsPrintingBluetooth(false);
+    }
+  };
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [cart, setCart] = useState<SaleItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isScanning, setIsScanning] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'debt' | 'bankak'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bankak' | 'fawry' | 'oocash'>('cash');
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [receiptUrl, setReceiptUrl] = useState<string>('');
   const [lastSale, setLastSale] = useState<{ id: string, cart: SaleItem[], total: number, discount?: number, paymentMethod: string, customerName?: string } | null>(null);
@@ -29,6 +46,8 @@ export const POS: React.FC = () => {
   const [checkoutError, setCheckoutError] = useState<string>('');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
+  const [isIdentifying, setIsIdentifying] = useState(false);
+  const [aiProduct, setAiProduct] = useState<{ name: string, price?: number, barcode: string } | null>(null);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -56,89 +75,62 @@ export const POS: React.FC = () => {
     };
   }, []);
 
+  // Smart Barcode Detection: Auto-add if exact barcode is entered
   useEffect(() => {
-    let html5QrCode: Html5Qrcode | null = null;
-
-    if (isScanning) {
-      html5QrCode = new Html5Qrcode('reader', {
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.QR_CODE,
-        ]
-      });
-      
-      const config = { 
-        fps: 20, 
-        qrbox: { width: 350, height: 150 },
-        useBarCodeDetectorIfSupported: true,
-        aspectRatio: 1.0
-      };
-      
-      html5QrCode.start(
-        { facingMode: "environment" },
-        config,
-        (decodedText) => {
-          // Play beep sound
-          try {
-            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            
-            oscillator.type = 'sine';
-            oscillator.frequency.value = 800; // Beep frequency
-            
-            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-            gainNode.gain.linearRampToValueAtTime(1, audioContext.currentTime + 0.01);
-            gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.1);
-            
-            oscillator.start(audioContext.currentTime);
-            oscillator.stop(audioContext.currentTime + 0.1);
-          } catch (e) {
-            console.error("Audio play failed", e);
-          }
-
-          handleScan(decodedText);
-          setIsScanning(false);
-        },
-        (errorMessage) => {
-          // Ignore scan errors
-        }
-      ).catch((err) => {
-        console.error("Error starting scanner", err);
-        const errorMsg = err?.toString() || '';
-        if (errorMsg.includes('NotAllowedError') || errorMsg.includes('Permission dismissed')) {
-          setToast({ message: 'الرجاء السماح بالوصول إلى الكاميرا لاستخدام الماسح الضوئي.', type: 'error' });
-        } else {
-          setToast({ message: 'فشل تشغيل الكاميرا', type: 'error' });
-        }
-        setIsScanning(false);
-      });
+    if (!searchQuery) return;
+    
+    // Only auto-add if it's a likely barcode (long number or specific format)
+    // and matches exactly one product
+    const exactMatch = products.find(p => p.barcode === searchQuery);
+    if (exactMatch && searchQuery.length >= 6) {
+      addToCart(exactMatch);
+      setSearchQuery('');
+      setToast({ message: `تمت إضافة ${exactMatch.name}`, type: 'success' });
     }
+  }, [searchQuery, products]);
 
-    return () => {
-      if (html5QrCode && html5QrCode.isScanning) {
-        html5QrCode.stop().then(() => {
-          html5QrCode?.clear();
-        }).catch(console.error);
-      }
-    };
-  }, [isScanning]);
-
-  const handleScan = (barcode: string) => {
+  const handleScan = async (barcode: string) => {
     const product = products.find(p => p.barcode === barcode);
     if (product) {
       addToCart(product);
     } else {
-      setToast({ message: 'المنتج غير موجود!', type: 'error' });
+      setToast({ message: 'المنتج غير موجود في المخزون. جاري البحث باستخدام الذكاء الاصطناعي...', type: 'info' });
+      setIsIdentifying(true);
+      try {
+        const result = await identifyProductByBarcode(barcode);
+        if (result) {
+          setAiProduct({ ...result, barcode });
+        } else {
+          setToast({ message: 'لم يتم التعرف على المنتج.', type: 'error' });
+        }
+      } catch (error) {
+        console.error('AI identification failed:', error);
+        setToast({ message: 'فشل في الاتصال بالذكاء الاصطناعي.', type: 'error' });
+      } finally {
+        setIsIdentifying(false);
+      }
     }
+  };
+
+  const addAiProductToCart = () => {
+    if (!aiProduct) return;
+    
+    // Create a temporary product object
+    const tempProduct: Product = {
+      id: 'ai-' + aiProduct.barcode,
+      name: aiProduct.name,
+      price: aiProduct.price || 0,
+      cost: 0,
+      stock: 999, // Assume infinite stock for unknown items
+      barcode: aiProduct.barcode,
+      category: 'عام',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    addToCart(tempProduct);
+    setAiProduct(null);
+    setToast({ message: 'تمت إضافة المنتج المتعارف عليه بالذكاء الاصطناعي.', type: 'success' });
   };
 
   const addToCart = (product: Product) => {
@@ -198,6 +190,11 @@ export const POS: React.FC = () => {
       return;
     }
 
+    if (['bankak', 'fawry', 'oocash'].includes(paymentMethod) && !receiptUrl) {
+      setCheckoutError('الرجاء إرفاق صورة إشعار التحويل لإتمام العملية.');
+      return;
+    }
+
     setIsCheckingOut(true);
     try {
       const saleData: any = {
@@ -208,11 +205,11 @@ export const POS: React.FC = () => {
         paymentMethod,
         date: new Date().toISOString(),
         cashierId: user?.uid,
-        customerId: selectedCustomer || null,
+        customerId: null,
         createdAt: serverTimestamp()
       };
 
-      if (paymentMethod === 'bankak' && receiptUrl) {
+      if (['bankak', 'fawry', 'oocash'].includes(paymentMethod) && receiptUrl) {
         saleData.receiptUrl = receiptUrl;
       }
 
@@ -307,7 +304,9 @@ export const POS: React.FC = () => {
       } else {
         doc.text(`Total: ${formatCurrency(saleData.total)}`, 140, finalY + 10);
       }
-      const paymentMethodAr = saleData.paymentMethod === 'cash' ? 'Cash' : saleData.paymentMethod === 'card' ? 'Card' : saleData.paymentMethod === 'bankak' ? 'Bankak' : 'Debt';
+      const paymentMethodAr = saleData.paymentMethod === 'cash' ? 'Cash' : 
+        saleData.paymentMethod === 'bankak' ? 'Bankak' : 
+        saleData.paymentMethod === 'fawry' ? 'Fawry' : 'OOCash';
       doc.text(`Payment: ${paymentMethodAr}`, 20, finalY + (saleData.discount ? 30 : 10));
 
       doc.save(`receipt_${saleData.id.slice(0, 8)}.pdf`);
@@ -328,50 +327,35 @@ export const POS: React.FC = () => {
     }
   };
 
-  const handlePrintBluetooth = async (saleData: any) => {
-    let text = '';
-    text += `${storeSettings?.storeName || 'نظام زينة'}\n`;
-    if (storeSettings?.storeAddress) {
-      text += `${storeSettings.storeAddress}\n`;
-    }
-    text += '--------------------------------\n';
-    text += `رقم الإيصال: ${saleData.id.slice(0, 8)}\n`;
-    text += `التاريخ: ${new Date().toLocaleString('ar-EG')}\n`;
-    text += `الكاشير: ${user?.name}\n`;
-    if (saleData.customerName) {
-      text += `العميل: ${saleData.customerName}\n`;
-    }
-    text += '--------------------------------\n';
-    text += 'الصنف        الكمية    السعر\n';
-    text += '--------------------------------\n';
-    saleData.cart.forEach((item: any) => {
-      const name = item.name.length > 12 ? item.name.substring(0, 12) : item.name.padEnd(12, ' ');
-      const qty = item.qty.toString().padEnd(4, ' ');
-      const price = `ج.س${formatCurrency((item.price * item.qty))}`;
-      text += `${name} ${qty} ${price}\n`;
-    });
-    text += '--------------------------------\n';
-    if (saleData.discount) {
-      text += `المجموع الفرعي: ج.س${formatCurrency((saleData.total + saleData.discount))}\n`;
-      text += `الخصم: ج.س${formatCurrency(saleData.discount)}\n`;
-    }
-    text += `الإجمالي: ج.س${formatCurrency(saleData.total)}\n`;
-    const paymentMethodAr = saleData.paymentMethod === 'cash' ? 'نقدي' : saleData.paymentMethod === 'card' ? 'بطاقة' : saleData.paymentMethod === 'bankak' ? 'بنكك' : 'آجل';
-    text += `طريقة الدفع: ${paymentMethodAr}\n`;
-    text += '--------------------------------\n';
-    text += 'شكرا لتسوقكم معنا!\n';
 
-    try {
-      await printReceiptBluetooth(text);
-    } catch (err) {
-      setToast({ message: 'فشل الاتصال بالطابعة. تأكد من تفعيل البلوتوث وإقران الطابعة.', type: 'error' });
-    }
-  };
-
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    p.barcode.includes(searchQuery)
-  );
+  const filteredProducts = products.filter(p => {
+    const query = searchQuery.toLowerCase();
+    const name = p.name.toLowerCase();
+    const barcode = p.barcode?.toLowerCase() || '';
+    
+    // Exact barcode match - Highest priority
+    if (barcode === query) return true;
+    
+    // Name starts with query
+    if (name.startsWith(query)) return true;
+    
+    // Barcode starts with query
+    if (barcode.startsWith(query)) return true;
+    
+    // Name contains query
+    if (name.includes(query)) return true;
+    
+    return false;
+  }).sort((a, b) => {
+    const query = searchQuery.toLowerCase();
+    // Prioritize exact matches
+    if (a.barcode?.toLowerCase() === query) return -1;
+    if (b.barcode?.toLowerCase() === query) return 1;
+    // Prioritize name starts with
+    if (a.name.toLowerCase().startsWith(query) && !b.name.toLowerCase().startsWith(query)) return -1;
+    if (!a.name.toLowerCase().startsWith(query) && b.name.toLowerCase().startsWith(query)) return 1;
+    return 0;
+  });
 
   return (
     <div className="flex flex-col lg:flex-row h-full gap-6 pb-24 lg:pb-0 relative" dir="rtl">
@@ -406,35 +390,30 @@ export const POS: React.FC = () => {
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="ابحث عن المنتجات أو امسح الباركود..."
+              placeholder="ابحث بالاسم أو اكتب رقم الباركود..."
               className="w-full pr-10 pl-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && searchQuery) {
+                  handleScan(searchQuery);
+                  setSearchQuery('');
+                }
+              }}
             />
           </div>
           <button
-            onClick={() => setIsScanning(!isScanning)}
-            className={`px-4 py-3 rounded-xl flex items-center gap-2 font-medium transition-colors ${
-              isScanning ? 'bg-red-100 text-red-700' : 'bg-pink-100 text-pink-700 hover:bg-pink-200'
-            }`}
+            onClick={() => {
+              if (searchQuery) {
+                handleScan(searchQuery);
+                setSearchQuery('');
+              }
+            }}
+            className="px-6 py-3 bg-pink-600 text-white rounded-xl font-bold hover:bg-pink-700 transition-colors shadow-sm"
           >
-            <ScanLine className="w-5 h-5" />
-            {isScanning ? 'إيقاف المسح' : 'مسح'}
+            إضافة منتج
           </button>
         </div>
-
-        {isScanning && (
-          <div className="mb-6 p-4 bg-white rounded-xl shadow-sm border border-gray-200 relative overflow-hidden flex justify-center">
-            <div className="relative w-full max-w-sm">
-              <div id="reader" className="w-full rounded-lg overflow-hidden"></div>
-              <div className="absolute top-0 left-0 w-full h-full pointer-events-none flex items-center justify-center">
-                 <div className="w-[300px] h-[150px] relative border-2 border-pink-500 rounded-lg overflow-hidden">
-                   <div className="absolute left-0 w-full h-1 bg-pink-500 shadow-[0_0_10px_#ec4899] animate-scan"></div>
-                 </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         <div className="flex-1 overflow-y-auto pl-2">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -611,7 +590,7 @@ export const POS: React.FC = () => {
                 <span className="text-2xl font-bold text-pink-600">{formatCurrency(total)} ج.س</span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
                 <button
                   onClick={() => setPaymentMethod('cash')}
                   className={`p-4 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${
@@ -619,40 +598,49 @@ export const POS: React.FC = () => {
                   }`}
                 >
                   <Banknote className="w-6 h-6" />
-                  <span className="font-medium">نقدي</span>
+                  <span className="font-medium text-sm text-center">كاش</span>
                 </button>
                 <button
-                  onClick={() => setPaymentMethod('card')}
-                  className={`p-4 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${
-                    paymentMethod === 'card' ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-pink-200'
-                  }`}
-                >
-                  <CreditCard className="w-6 h-6" />
-                  <span className="font-medium">بطاقة</span>
-                </button>
-                <button
-                  onClick={() => setPaymentMethod('bankak')}
+                  onClick={() => {
+                    setPaymentMethod('bankak');
+                    setReceiptUrl('');
+                  }}
                   className={`p-4 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${
                     paymentMethod === 'bankak' ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-pink-200'
                   }`}
                 >
-                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                  <span className="font-medium">بنكك</span>
+                  <div className="w-6 h-6 bg-green-100 flex items-center justify-center rounded text-green-700 font-bold text-[10px]">بنكك</div>
+                  <span className="font-medium text-sm text-center">بنكك</span>
                 </button>
                 <button
-                  onClick={() => setPaymentMethod('debt')}
+                  onClick={() => {
+                    setPaymentMethod('fawry');
+                    setReceiptUrl('');
+                  }}
                   className={`p-4 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${
-                    paymentMethod === 'debt' ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-pink-200'
+                    paymentMethod === 'fawry' ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-pink-200'
                   }`}
                 >
-                  <UserRound className="w-6 h-6" />
-                  <span className="font-medium">آجل/دين</span>
+                  <div className="w-6 h-6 bg-yellow-100 flex items-center justify-center rounded text-yellow-700 font-bold text-[10px]">فوري</div>
+                  <span className="font-medium text-sm text-center">فوري</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setPaymentMethod('oocash');
+                    setReceiptUrl('');
+                  }}
+                  className={`p-4 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${
+                    paymentMethod === 'oocash' ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-pink-200'
+                  }`}
+                >
+                  <div className="w-6 h-6 bg-blue-100 flex items-center justify-center rounded text-blue-700 font-bold text-[10px]">OC</div>
+                  <span className="font-medium text-sm text-center">أووكاش</span>
                 </button>
               </div>
 
-              {paymentMethod === 'bankak' && (
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">صورة الإشعار (اختياري)</label>
+              {['bankak', 'fawry', 'oocash'].includes(paymentMethod) && (
+                <div className="mt-4 p-4 bg-pink-50 rounded-xl border border-pink-100">
+                  <label className="block text-sm font-bold text-pink-800 mb-2">إرفاق إشعار التحويل (مطلوب)</label>
                   <input
                     type="file"
                     accept="image/*"
@@ -661,19 +649,26 @@ export const POS: React.FC = () => {
                       if (file) {
                         try {
                           const { compressImage } = await import('../utils/imageUtils');
-                          const compressed = await compressImage(file, 500);
+                          const compressed = await compressImage(file, 600);
                           setReceiptUrl(compressed);
+                          setCheckoutError('');
                         } catch (error) {
                           console.error('Error compressing image:', error);
                           setToast({ message: 'فشل في معالجة الصورة.', type: 'error' });
                         }
                       }
                     }}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-pink-700 hover:file:bg-pink-100 transition-all"
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-white file:text-pink-700 hover:file:bg-gray-100 transition-all cursor-pointer"
                   />
                   {receiptUrl && (
-                    <div className="mt-2">
-                      <img src={receiptUrl} alt="Receipt Preview" className="h-20 rounded-xl border border-gray-200" />
+                    <div className="mt-4 relative group">
+                      <img src={receiptUrl} alt="Receipt Preview" className="w-full h-32 object-cover rounded-xl border-2 border-pink-200 shadow-sm" />
+                      <button 
+                        onClick={() => setReceiptUrl('')}
+                        className="absolute -top-2 -left-2 p-1 bg-red-500 text-white rounded-full shadow-lg"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
                     </div>
                   )}
                 </div>
@@ -778,7 +773,9 @@ export const POS: React.FC = () => {
                 </div>
                 <div className="flex justify-between">
                   <span>طريقة الدفع:</span>
-                  <span>{lastSale.paymentMethod === 'cash' ? 'نقدي' : lastSale.paymentMethod === 'card' ? 'بطاقة' : lastSale.paymentMethod === 'bankak' ? 'بنكك' : 'آجل'}</span>
+                  <span>{lastSale.paymentMethod === 'cash' ? 'نقدي' : 
+                    lastSale.paymentMethod === 'bankak' ? 'بنكك' : 
+                    lastSale.paymentMethod === 'fawry' ? 'فوري' : 'أووكاش'}</span>
                 </div>
               </div>
               <div className="text-center mt-6 text-gray-500">
@@ -795,11 +792,16 @@ export const POS: React.FC = () => {
                 طباعة (عبر النظام / طابعة عادية)
               </button>
               <button
-                onClick={() => handlePrintBluetooth(lastSale)}
-                className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                onClick={() => handleBluetoothPrint(lastSale)}
+                disabled={isPrintingBluetooth}
+                className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                <Bluetooth className="w-5 h-5" />
-                طباعة (بلوتوث مباشر)
+                {isPrintingBluetooth ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Bluetooth className="w-5 h-5" />
+                )}
+                <span>طباعة (بلوتوث مباشر Xprinter)</span>
               </button>
               <button
                 onClick={() => savePdfReceipt(lastSale)}
@@ -813,6 +815,64 @@ export const POS: React.FC = () => {
                 className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors"
               >
                 إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Identification Loading Overlay */}
+      {isIdentifying && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[80] p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl animate-pulse">
+            <div className="relative w-20 h-20 mx-auto mb-6">
+              <Brain className="w-20 h-20 text-pink-600" />
+              <Sparkles className="absolute -top-2 -right-2 w-8 h-8 text-yellow-400 animate-bounce" />
+              <Loader2 className="absolute inset-0 w-20 h-20 text-pink-200 animate-spin opacity-50" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">جاري التفكير...</h3>
+            <p className="text-gray-500">يتعرف الذكاء الاصطناعي على المنتج من الباركود</p>
+          </div>
+        </div>
+      )}
+
+      {/* AI Result Modal */}
+      {aiProduct && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[80] p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl transform transition-all scale-100">
+            <div className="flex items-center gap-3 mb-6 text-pink-600">
+              <Brain className="w-8 h-8" />
+              <h3 className="text-2xl font-bold">تم العثور باستخدام AI!</h3>
+            </div>
+            
+            <div className="bg-pink-50 rounded-xl p-4 mb-6 border border-pink-100">
+              <p className="text-sm text-pink-600 font-medium mb-1">اسم المنتج</p>
+              <p className="text-xl font-bold text-gray-900 mb-4">{aiProduct.name}</p>
+              
+              <div className="flex justify-between items-center pt-4 border-t border-pink-100">
+                <div>
+                  <p className="text-sm text-pink-600 font-medium mb-1">السعر المقترح</p>
+                  <p className="text-2xl font-bold text-pink-700">{formatCurrency(aiProduct.price || 0)} ج.س</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-pink-600 font-medium mb-1">الباركود</p>
+                  <p className="text-gray-600 font-mono">{aiProduct.barcode}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setAiProduct(null)}
+                className="flex-1 py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={addAiProductToCart}
+                className="flex-1 py-4 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-bold transition-colors shadow-lg shadow-pink-200"
+              >
+                إضافة للسلة
               </button>
             </div>
           </div>
