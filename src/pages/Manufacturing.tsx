@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
+import React, { useState, useEffect, useCallback } from 'react';
+import { collection, addDoc, doc, updateDoc, deleteDoc, query, orderBy, getDocs, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { ManufacturingCycle, ManufacturingSale, ManufacturingExpense } from '../types';
-import { Plus, Edit, Trash2, X, Factory, DollarSign, Package, FileText, Receipt, CheckCircle, Clock, LayoutDashboard, Handshake } from 'lucide-react';
+import { Plus, Edit, Trash2, X, Factory, DollarSign, Package, FileText, Receipt, CheckCircle, Clock, LayoutDashboard, Handshake, RefreshCw, Loader2 } from 'lucide-react';
 import { format, parseISO, isToday, isThisWeek, isThisMonth, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { ExportButtons } from '../components/ExportButtons';
@@ -17,6 +17,9 @@ export const Manufacturing: React.FC = () => {
   const [sales, setSales] = useState<ManufacturingSale[]>([]);
   const [expenses, setExpenses] = useState<ManufacturingExpense[]>([]);
   
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const [isCycleModalOpen, setIsCycleModalOpen] = useState(false);
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -47,36 +50,40 @@ export const Manufacturing: React.FC = () => {
     amount: 0,
   });
 
+  const fetchData = useCallback(async () => {
+    if (!user || isLoading) return;
+    setIsLoading(true);
+
+    try {
+      const cyclesQuery = query(collection(db, 'manufacturing_cycles'), orderBy('createdAt', 'desc'));
+      const salesQuery = query(collection(db, 'manufacturing_sales'), orderBy('date', 'desc'));
+      const expensesQuery = query(collection(db, 'manufacturing_expenses'), orderBy('date', 'desc'));
+
+      const [cyclesSnap, salesSnap, expensesSnap] = await Promise.all([
+        getDocs(cyclesQuery),
+        getDocs(salesQuery),
+        getDocs(expensesQuery)
+      ]);
+
+      setCycles(cyclesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingCycle)));
+      setSales(salesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingSale)));
+      setExpenses(expensesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingExpense)));
+    } catch (error) {
+      console.error('Error fetching manufacturing data:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [user, isLoading]);
+
   useEffect(() => {
-    if (!user) return;
+    fetchData();
+  }, []);
 
-    const cyclesUnsubscribe = onSnapshot(
-      query(collection(db, 'manufacturing_cycles'), orderBy('createdAt', 'desc')),
-      (snapshot) => {
-        setCycles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingCycle)));
-      }
-    );
-
-    const salesUnsubscribe = onSnapshot(
-      query(collection(db, 'manufacturing_sales'), orderBy('date', 'desc')),
-      (snapshot) => {
-        setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingSale)));
-      }
-    );
-
-    const expensesUnsubscribe = onSnapshot(
-      query(collection(db, 'manufacturing_expenses'), orderBy('date', 'desc')),
-      (snapshot) => {
-        setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingExpense)));
-      }
-    );
-
-    return () => {
-      cyclesUnsubscribe();
-      salesUnsubscribe();
-      expensesUnsubscribe();
-    };
-  }, [user]);
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    fetchData();
+  };
 
   const handleCreateCycle = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -292,6 +299,14 @@ export const Manufacturing: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">التصنيع</h1>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="p-2 text-gray-600 hover:text-pink-600 bg-white border border-gray-200 rounded-xl transition-all disabled:opacity-50"
+            title="تحديث البيانات"
+          >
+            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
           <button
             onClick={() => window.print()}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"

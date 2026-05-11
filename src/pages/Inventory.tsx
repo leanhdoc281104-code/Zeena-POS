@@ -1,18 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import React, { useState, useEffect, useCallback } from 'react';
+import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, limit, getDocs, startAfter, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Product } from '../types';
 import { useAuth } from '../AuthContext';
 import { formatCurrency } from '../utils/format';
-import { Plus, Search, Edit, Trash2, Package, Image as ImageIcon } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Package, Image as ImageIcon, Loader2, RefreshCw } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { compressImage } from '../utils/imageUtils';
 import { Toast } from '../components/Toast';
 import { ExportButtons } from '../components/ExportButtons';
 
+const PAGE_SIZE = 50;
+
 export const Inventory: React.FC = () => {
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
+  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -31,12 +38,49 @@ export const Inventory: React.FC = () => {
     imageUrl: ''
   });
 
+  const fetchProducts = useCallback(async (isNextPage = false) => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      let q = query(
+        collection(db, 'products'),
+        orderBy('name'),
+        limit(PAGE_SIZE)
+      );
+
+      if (isNextPage && lastVisible) {
+        q = query(q, startAfter(lastVisible));
+      }
+
+      const snapshot = await getDocs(q);
+      const newProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+
+      if (isNextPage) {
+        setProducts(prev => [...prev, ...newProducts]);
+      } else {
+        setProducts(newProducts);
+      }
+
+      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+      setHasMore(snapshot.docs.length === PAGE_SIZE);
+    } catch (error) {
+      console.error('Error fetching products:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [lastVisible, isLoading]);
+
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
-      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-    });
-    return () => unsub();
+    fetchProducts();
   }, []);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    setLastVisible(null);
+    fetchProducts(false);
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -144,6 +188,14 @@ export const Inventory: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">إدارة المخزون</h1>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="p-2 text-gray-600 hover:text-pink-600 bg-white border border-gray-200 rounded-xl transition-all disabled:opacity-50"
+            title="تحديث البيانات"
+          >
+            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
           <ExportButtons data={exportData} filename="تقرير_المخزون" />
           {user?.role === 'admin' && (
             <button
@@ -239,6 +291,19 @@ export const Inventory: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {hasMore && (
+        <div className="flex justify-center pt-4 print:hidden">
+          <button
+            onClick={() => fetchProducts(true)}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-8 py-3 bg-white border border-gray-200 rounded-xl font-bold text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-50 shadow-sm"
+          >
+            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+            عرض المزيد من المنتجات
+          </button>
+        </div>
+      )}
 
       {/* Modal */}
       {isModalOpen && (

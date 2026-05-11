@@ -1,17 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import React, { useState, useEffect, useCallback } from 'react';
+import { collection, addDoc, query, orderBy, serverTimestamp, getDocs, limit, startAfter, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Expense } from '../types';
 import { useAuth } from '../AuthContext';
-import { Plus, Receipt, Calendar } from 'lucide-react';
+import { Plus, Receipt, Calendar, Loader2, RefreshCw } from 'lucide-react';
 import { format, parseISO, isToday, isThisWeek, isThisMonth, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrency } from '../utils/format';
 import { ExportButtons } from '../components/ExportButtons';
 import { DateRangeFilter } from '../components/DateRangeFilter';
 
+const PAGE_SIZE = 20;
+
 export const Expenses: React.FC = () => {
   const { user } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [timeFilter, setTimeFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
@@ -23,13 +30,49 @@ export const Expenses: React.FC = () => {
     category: 'عام',
   });
 
+  const fetchExpenses = useCallback(async (isNextPage = false) => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      let q = query(
+        collection(db, 'expenses'),
+        orderBy('date', 'desc'),
+        limit(PAGE_SIZE)
+      );
+
+      if (isNextPage && lastVisible) {
+        q = query(q, startAfter(lastVisible));
+      }
+
+      const snapshot = await getDocs(q);
+      const newExpenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense));
+
+      if (isNextPage) {
+        setExpenses(prev => [...prev, ...newExpenses]);
+      } else {
+        setExpenses(newExpenses);
+      }
+
+      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+      setHasMore(snapshot.docs.length === PAGE_SIZE);
+    } catch (error) {
+      console.error('Error fetching expenses:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [lastVisible, isLoading]);
+
   useEffect(() => {
-    const q = query(collection(db, 'expenses'), orderBy('date', 'desc'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
-    });
-    return () => unsub();
+    fetchExpenses();
   }, []);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    setLastVisible(null);
+    fetchExpenses(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,6 +122,14 @@ export const Expenses: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">المصروفات</h1>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="p-2 text-gray-600 hover:text-pink-600 bg-white border border-gray-200 rounded-xl transition-all disabled:opacity-50"
+            title="تحديث البيانات"
+          >
+            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
           <ExportButtons data={exportData} filename="تقرير_المصروفات" />
           {user?.role === 'admin' && (
             <button
@@ -159,6 +210,19 @@ export const Expenses: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {hasMore && (
+        <div className="flex justify-center pt-4 print:hidden">
+          <button
+            onClick={() => fetchExpenses(true)}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-8 py-3 bg-white border border-gray-200 rounded-xl font-bold text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-50 shadow-sm"
+          >
+            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+            عرض المزيد من المصروفات
+          </button>
+        </div>
+      )}
 
       {/* Modal */}
       {isModalOpen && (

@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useCallback } from 'react';
+import { collection, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { db } from '../firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { User } from '../types';
 import { useAuth } from '../AuthContext';
-import { Plus, Trash2, Mail, Shield, User as UserIcon, Key } from 'lucide-react';
+import { Plus, Trash2, Mail, Shield, User as UserIcon, Key, RefreshCw, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
 export const Roles: React.FC = () => {
@@ -14,6 +14,9 @@ export const Roles: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -21,12 +24,28 @@ export const Roles: React.FC = () => {
     role: 'cashier' as 'admin' | 'cashier' | 'observer'
   });
 
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users'), (snapshot) => {
+  const fetchUsers = useCallback(async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      const snapshot = await getDocs(collection(db, 'users'));
       setUsers(snapshot.docs.map(doc => doc.data() as User));
-    });
-    return () => unsub();
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [isLoading]);
+
+  useEffect(() => {
+    fetchUsers();
   }, []);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    fetchUsers();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,6 +121,14 @@ export const Roles: React.FC = () => {
       <div className="flex justify-between items-center print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">إدارة الأدوار والحسابات</h1>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="p-2 text-gray-600 hover:text-pink-600 bg-white border border-gray-200 rounded-xl transition-all disabled:opacity-50"
+            title="تحديث البيانات"
+          >
+            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
           <button
             onClick={() => window.print()}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"

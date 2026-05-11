@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, doc, updateDoc, increment, serverTimestamp, getDoc } from 'firebase/firestore';
+import { 
+  collection, addDoc, doc, updateDoc, increment, 
+  serverTimestamp, getDoc, query, limit, startAfter, orderBy, getDocs, where, writeBatch 
+} from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Product, SaleItem, Customer, StoreSettings } from '../types';
-import { Search, ShoppingCart, Plus, Minus, Trash2, CreditCard, Banknote, UserRound, Package, Bluetooth, Download, X } from 'lucide-react';
 import { Toast } from '../components/Toast';
 import { formatCurrency } from '../utils/format';
 import jsPDF from 'jspdf';
@@ -12,7 +14,12 @@ import 'jspdf-autotable';
 import { printReceiptBluetooth } from '../utils/bluetooth';
 import { generateReceiptImage } from '../utils/receiptGenerator';
 import { identifyProductByBarcode } from '../services/geminiService';
-import { Brain, Sparkles, Loader2, Printer } from 'lucide-react';
+import { playBeep } from '../utils/audio';
+import { 
+  Search, ShoppingCart, Plus, Minus, Trash2, CreditCard, Banknote, 
+  UserRound, Package, Bluetooth, Download, X, Brain, Sparkles, Loader2, Printer,
+  Camera, Image as ImageIcon
+} from 'lucide-react';
 
 export const POS: React.FC = () => {
   const [isPrintingBluetooth, setIsPrintingBluetooth] = useState(false);
@@ -32,6 +39,10 @@ export const POS: React.FC = () => {
   };
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
+  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [cart, setCart] = useState<SaleItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,34 +74,129 @@ export const POS: React.FC = () => {
     };
     fetchSettings();
 
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-    });
-    const unsubCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
-      setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
-    });
-    return () => {
-      unsubProducts();
-      unsubCustomers();
+    // Initial product load (Limited to 24 for a good grid)
+    const loadInitialProducts = async () => {
+      try {
+        const q = query(
+          collection(db, 'products'),
+          orderBy('name'),
+          limit(24)
+        );
+        const snapshot = await getDocs(q);
+        const fetchedProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+        setProducts(fetchedProducts);
+        setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+        setHasMore(snapshot.docs.length === 24);
+      } catch (error) {
+        console.error('Error loading initial products:', error);
+      }
     };
+
+    const loadCustomers = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, 'customers'));
+        setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
+      } catch (error) {
+        console.error('Error loading customers:', error);
+      }
+    };
+
+    loadInitialProducts();
+    loadCustomers();
   }, []);
 
-  // Smart Barcode Detection: Auto-add if exact barcode is entered
-  useEffect(() => {
-    if (!searchQuery) return;
-    
-    // Only auto-add if it's a likely barcode (long number or specific format)
-    // and matches exactly one product
-    const exactMatch = products.find(p => p.barcode === searchQuery);
-    if (exactMatch && searchQuery.length >= 6) {
-      addToCart(exactMatch);
-      setSearchQuery('');
-      setToast({ message: `تمت إضافة ${exactMatch.name}`, type: 'success' });
+  const loadMoreProducts = async () => {
+    if (!lastVisible || isLoadingMore || !hasMore) return;
+    setIsLoadingMore(true);
+    try {
+      const q = query(
+        collection(db, 'products'),
+        orderBy('name'),
+        startAfter(lastVisible),
+        limit(24)
+      );
+      const snapshot = await getDocs(q);
+      const fetchedProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      setProducts(prev => [...prev, ...fetchedProducts]);
+      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+      setHasMore(snapshot.docs.length === 24);
+    } catch (error) {
+      console.error('Error loading more products:', error);
+    } finally {
+      setIsLoadingMore(false);
     }
-  }, [searchQuery, products]);
+  };
+
+  // Debounced search logic to reduce Firestore reads
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!searchQuery) {
+        // Reset to initial limited view if search is cleared
+        // But we already have the paged items, so maybe just don't do anything?
+        // Actually, searching might have replaced the 'products' state.
+        return;
+      }
+
+      setSearchLoading(true);
+      try {
+        // 1. Try exact barcode match (fast and precise)
+        const barcodeQuery = query(collection(db, 'products'), where('barcode', '==', searchQuery), limit(1));
+        const barcodeSnap = await getDocs(barcodeQuery);
+        
+        if (!barcodeSnap.empty) {
+          const foundProduct = { id: barcodeSnap.docs[0].id, ...barcodeSnap.docs[0].data() } as Product;
+          // Add to current products list if not already there
+          setProducts(prev => {
+            if (prev.find(p => p.id === foundProduct.id)) return prev;
+            return [foundProduct, ...prev];
+          });
+          // Auto-add logic
+          addToCart(foundProduct);
+          setSearchQuery('');
+          setToast({ message: `تمت إضافة ${foundProduct.name}`, type: 'success' });
+          return;
+        }
+
+        // 2. Try name search if barcode didn't match and query is long enough
+        if (searchQuery.length >= 3) {
+          const nameQuery = query(
+            collection(db, 'products'),
+            where('name', '>=', searchQuery),
+            where('name', '<=', searchQuery + '\uf8ff'),
+            limit(10)
+          );
+          const nameSnap = await getDocs(nameQuery);
+          const results = nameSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+          
+          setProducts(prev => {
+            const existingIds = new Set(prev.map(p => p.id));
+            const newItems = results.filter(p => !existingIds.has(p.id));
+            return [...newItems, ...prev];
+          });
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleScan = async (barcode: string) => {
-    const product = products.find(p => p.barcode === barcode);
+    let product = products.find(p => p.barcode === barcode);
+    
+    // If not in local paged products, check Firestore specifically
+    if (!product) {
+      const q = query(collection(db, 'products'), where('barcode', '==', barcode), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        product = { id: snap.docs[0].id, ...snap.docs[0].data() } as Product;
+        setProducts(prev => [product!, ...prev]);
+      }
+    }
+
     if (product) {
       addToCart(product);
     } else {
@@ -136,6 +242,7 @@ export const POS: React.FC = () => {
   };
 
   const addToCart = (product: Product) => {
+    playBeep();
     setCart(prev => {
       const existing = prev.find(item => item.productId === product.id);
       if (existing) {
@@ -158,7 +265,11 @@ export const POS: React.FC = () => {
       if (item.productId === productId) {
         const product = products.find(p => p.id === productId);
         const newQty = item.qty + delta;
-        if (newQty > (product?.stock || 0)) {
+        
+        // If product details aren't in local state (unlikely for items in cart, but safe)
+        if (!product) return { ...item, qty: newQty > 0 ? newQty : 0 };
+
+        if (newQty > product.stock) {
           setToast({ message: 'الكمية غير كافية في المخزون!', type: 'error' });
           return item;
         }
@@ -184,6 +295,21 @@ export const POS: React.FC = () => {
   const totalCost = cart.reduce((sum, item) => sum + item.cost * item.qty, 0);
   const profit = total - totalCost;
 
+  const handleReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        const { compressImage } = await import('../utils/imageUtils');
+        const compressed = await compressImage(file, 600);
+        setReceiptUrl(compressed);
+        setCheckoutError('');
+      } catch (error) {
+        console.error('Error compressing image:', error);
+        setToast({ message: 'فشل في معالجة الصورة.', type: 'error' });
+      }
+    }
+  };
+
   const handleCheckout = async () => {
     setCheckoutError('');
     if (cart.length === 0) return;
@@ -199,6 +325,7 @@ export const POS: React.FC = () => {
 
     setIsCheckingOut(true);
     try {
+      const batch = writeBatch(db);
       const saleData: any = {
         items: cart,
         total,
@@ -216,25 +343,37 @@ export const POS: React.FC = () => {
       }
 
       // Create sale record
-      const saleRef = await addDoc(collection(db, 'sales'), saleData);
+      const saleRef = doc(collection(db, 'sales'));
+      batch.set(saleRef, saleData);
 
-      // Update product stock
+      // Update product stock in batch
       for (const item of cart) {
         const productRef = doc(db, 'products', item.productId);
-        await updateDoc(productRef, {
+        batch.update(productRef, {
           stock: increment(-item.qty),
           updatedAt: new Date().toISOString()
         });
       }
 
-      // Update customer debt if applicable
+      // Update customer debt if applicable in batch
       if (paymentMethod === 'debt' && selectedCustomer) {
         const customerRef = doc(db, 'customers', selectedCustomer);
-        await updateDoc(customerRef, {
+        batch.update(customerRef, {
           debtBalance: increment(total),
           updatedAt: new Date().toISOString()
         });
       }
+
+      await batch.commit();
+
+      // Manually update local products stock since we're not using onSnapshot anymore
+      setProducts(prev => prev.map(p => {
+        const cartItem = cart.find(item => item.productId === p.id);
+        if (cartItem) {
+          return { ...p, stock: p.stock - cartItem.qty };
+        }
+        return p;
+      }));
 
       const customerName = selectedCustomer ? customers.find(c => c.id === selectedCustomer)?.name : undefined;
       
@@ -392,6 +531,7 @@ export const POS: React.FC = () => {
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
+              autoFocus
               placeholder="ابحث بالاسم أو اكتب رقم الباركود..."
               className="w-full pr-10 pl-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all"
               value={searchQuery}
@@ -404,17 +544,6 @@ export const POS: React.FC = () => {
               }}
             />
           </div>
-          <button
-            onClick={() => {
-              if (searchQuery) {
-                handleScan(searchQuery);
-                setSearchQuery('');
-              }
-            }}
-            className="px-6 py-3 bg-pink-600 text-white rounded-xl font-bold hover:bg-pink-700 transition-colors shadow-sm"
-          >
-            إضافة منتج
-          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto pl-2">
@@ -441,6 +570,19 @@ export const POS: React.FC = () => {
               </button>
             ))}
           </div>
+
+          {hasMore && !searchQuery && (
+            <div className="mt-8 mb-12 flex justify-center">
+              <button
+                onClick={loadMoreProducts}
+                disabled={isLoadingMore}
+                className="px-8 py-3 bg-white border border-gray-200 rounded-xl font-bold text-gray-600 hover:bg-gray-50 transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {isLoadingMore ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                تحميل المزيد من المنتجات
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -642,26 +784,48 @@ export const POS: React.FC = () => {
 
               {['bankak', 'fawry', 'oocash'].includes(paymentMethod) && (
                 <div className="mt-4 p-4 bg-pink-50 rounded-xl border border-pink-100">
-                  <label className="block text-sm font-bold text-pink-800 mb-2">إرفاق إشعار التحويل (مطلوب)</label>
+                  <label className="block text-sm font-bold text-pink-800 mb-4">إرفاق إشعار التحويل (مطلوب)</label>
+                  
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('camera-input')?.click()}
+                      className="flex flex-col items-center justify-center gap-2 p-4 bg-white border-2 border-dashed border-pink-200 rounded-xl hover:border-pink-500 hover:bg-pink-50 transition-all group"
+                    >
+                      <div className="p-2 bg-pink-100 rounded-full group-hover:bg-pink-200 transition-colors">
+                        <Camera className="w-6 h-6 text-pink-600" />
+                      </div>
+                      <span className="text-sm font-bold text-pink-700">فتح الكاميرا</span>
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('gallery-input')?.click()}
+                      className="flex flex-col items-center justify-center gap-2 p-4 bg-white border-2 border-dashed border-gray-200 rounded-xl hover:border-pink-500 hover:bg-pink-50 transition-all group"
+                    >
+                      <div className="p-2 bg-gray-100 rounded-full group-hover:bg-pink-100 transition-colors">
+                        <ImageIcon className="w-6 h-6 text-gray-600 group-hover:text-pink-600" />
+                      </div>
+                      <span className="text-sm font-bold text-gray-700 group-hover:text-pink-700">المعرض</span>
+                    </button>
+                  </div>
+
                   <input
+                    id="camera-input"
                     type="file"
                     accept="image/*"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        try {
-                          const { compressImage } = await import('../utils/imageUtils');
-                          const compressed = await compressImage(file, 600);
-                          setReceiptUrl(compressed);
-                          setCheckoutError('');
-                        } catch (error) {
-                          console.error('Error compressing image:', error);
-                          setToast({ message: 'فشل في معالجة الصورة.', type: 'error' });
-                        }
-                      }
-                    }}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-white file:text-pink-700 hover:file:bg-gray-100 transition-all cursor-pointer"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleReceiptUpload}
                   />
+                  <input
+                    id="gallery-input"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleReceiptUpload}
+                  />
+
                   {receiptUrl && (
                     <div className="mt-4 relative group">
                       <img src={receiptUrl} alt="Receipt Preview" className="w-full h-32 object-cover rounded-xl border-2 border-pink-200 shadow-sm" />

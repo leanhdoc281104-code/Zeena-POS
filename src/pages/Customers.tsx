@@ -1,15 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, doc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
+import React, { useState, useEffect, useCallback } from 'react';
+import { collection, addDoc, doc, updateDoc, serverTimestamp, increment, getDocs, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Customer } from '../types';
 import { useAuth } from '../AuthContext';
-import { Plus, Users, Search, DollarSign } from 'lucide-react';
+import { Plus, Users, Search, DollarSign, RefreshCw, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { formatCurrency } from '../utils/format';
 
 export const Customers: React.FC = () => {
   const { user } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -23,12 +26,30 @@ export const Customers: React.FC = () => {
 
   const [paymentAmount, setPaymentAmount] = useState('');
 
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'customers'), (snapshot) => {
+  const fetchCustomers = useCallback(async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      const q = query(collection(db, 'customers'), orderBy('name'));
+      const snapshot = await getDocs(q);
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
-    });
-    return () => unsub();
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [isLoading]);
+
+  useEffect(() => {
+    fetchCustomers();
   }, []);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    fetchCustomers();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,6 +103,14 @@ export const Customers: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">العملاء والديون</h1>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="p-2 text-gray-600 hover:text-pink-600 bg-white border border-gray-200 rounded-xl transition-all disabled:opacity-50"
+            title="تحديث البيانات"
+          >
+            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
           <button
             onClick={() => window.print()}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"

@@ -1,17 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import React, { useState, useEffect, useCallback } from 'react';
+import { collection, query, orderBy, deleteDoc, doc, limit, getDocs, startAfter, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Sale } from '../types';
-import { Search, Trash2, Eye } from 'lucide-react';
+import { Search, Trash2, Eye, Plus, Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { format, parseISO, isToday, isThisWeek, isThisMonth, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrency } from '../utils/format';
 import { ExportButtons } from '../components/ExportButtons';
 import { DateRangeFilter } from '../components/DateRangeFilter';
 
+const PAGE_SIZE = 20;
+
 export const Sales: React.FC = () => {
   const { user } = useAuth();
   const [sales, setSales] = useState<Sale[]>([]);
+  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [timeFilter, setTimeFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
@@ -19,19 +26,56 @@ export const Sales: React.FC = () => {
   const [productFilter, setProductFilter] = useState('');
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
 
+  const fetchSales = useCallback(async (isNextPage = false) => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      let q = query(
+        collection(db, 'sales'),
+        orderBy('date', 'desc'),
+        limit(PAGE_SIZE)
+      );
+
+      if (isNextPage && lastVisible) {
+        q = query(q, startAfter(lastVisible));
+      }
+
+      const snapshot = await getDocs(q);
+      const newSales = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
+
+      if (isNextPage) {
+        setSales(prev => [...prev, ...newSales]);
+      } else {
+        setSales(newSales);
+      }
+
+      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+      setHasMore(snapshot.docs.length === PAGE_SIZE);
+    } catch (error) {
+      console.error('Error fetching sales:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [lastVisible, isLoading]);
+
   useEffect(() => {
-    const q = query(collection(db, 'sales'), orderBy('date', 'desc'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale)));
-    });
-    return () => unsub();
+    fetchSales();
   }, []);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    setLastVisible(null);
+    fetchSales(false);
+  };
 
   const handleDelete = async (id: string) => {
     if (user?.role !== 'admin') return;
     if (window.confirm('هل أنت متأكد أنك تريد حذف هذه العملية؟')) {
       try {
         await deleteDoc(doc(db, 'sales', id));
+        setSales(prev => prev.filter(s => s.id !== id));
       } catch (error) {
         console.error('Error deleting sale:', error);
         alert('فشل في حذف العملية.');
@@ -77,7 +121,17 @@ export const Sales: React.FC = () => {
     <div className="space-y-6" dir="rtl">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">تتبع المبيعات</h1>
-        <ExportButtons data={exportData} filename="تقرير_المبيعات" />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="p-2 text-gray-600 hover:text-pink-600 bg-white border border-gray-200 rounded-xl transition-all disabled:opacity-50"
+            title="تحديث البيانات"
+          >
+            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
+          <ExportButtons data={exportData} filename="تقرير_المبيعات" />
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 w-full print:hidden">
@@ -187,6 +241,19 @@ export const Sales: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {hasMore && (
+        <div className="flex justify-center pt-4 print:hidden">
+          <button
+            onClick={() => fetchSales(true)}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-8 py-3 bg-white border border-gray-200 rounded-xl font-bold text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-50 shadow-sm"
+          >
+            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+            عرض المزيد من المبيعات
+          </button>
+        </div>
+      )}
 
       {/* Sale Details Modal */}
       {selectedSale && (

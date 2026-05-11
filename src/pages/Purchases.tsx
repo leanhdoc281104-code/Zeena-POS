@@ -1,18 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, doc, updateDoc, increment, serverTimestamp, query, orderBy, deleteDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useCallback } from 'react';
+import { collection, addDoc, doc, updateDoc, increment, serverTimestamp, query, orderBy, deleteDoc, getDocs, limit, startAfter, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Product, Purchase, PurchaseItem } from '../types';
-import { Plus, Search, Trash2, Package, Eye } from 'lucide-react';
+import { Plus, Search, Trash2, Package, Eye, Loader2, RefreshCw } from 'lucide-react';
 import { format, parseISO, isToday, isThisWeek, isThisMonth, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrency } from '../utils/format';
 import { ExportButtons } from '../components/ExportButtons';
 import { DateRangeFilter } from '../components/DateRangeFilter';
 
+const PAGE_SIZE = 20;
+
 export const Purchases: React.FC = () => {
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
@@ -27,21 +34,66 @@ export const Purchases: React.FC = () => {
   const [qty, setQty] = useState('1');
   const [cost, setCost] = useState('');
 
+  const fetchInitialData = useCallback(async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      // Fetch all products for the purchase form (this might be large, but usually okay for 200 products)
+      const productsSnap = await getDocs(collection(db, 'products'));
+      setProducts(productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+
+      // Fetch initial purchases
+      const q = query(
+        collection(db, 'purchases'),
+        orderBy('date', 'desc'),
+        limit(PAGE_SIZE)
+      );
+      const purchasesSnap = await getDocs(q);
+      const newPurchases = purchasesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase));
+      setPurchases(newPurchases);
+      setLastVisible(purchasesSnap.docs[purchasesSnap.docs.length - 1]);
+      setHasMore(purchasesSnap.docs.length === PAGE_SIZE);
+    } catch (error) {
+      console.error('Error fetching initial data:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [isLoading]);
+
   useEffect(() => {
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-    });
-
-    const q = query(collection(db, 'purchases'), orderBy('date', 'desc'));
-    const unsubPurchases = onSnapshot(q, (snapshot) => {
-      setPurchases(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase)));
-    });
-
-    return () => {
-      unsubProducts();
-      unsubPurchases();
-    };
+    fetchInitialData();
   }, []);
+
+  const loadMorePurchases = async () => {
+    if (!lastVisible || isLoading || !hasMore) return;
+    setIsLoading(true);
+
+    try {
+      const q = query(
+        collection(db, 'purchases'),
+        orderBy('date', 'desc'),
+        startAfter(lastVisible),
+        limit(PAGE_SIZE)
+      );
+      const snapshot = await getDocs(q);
+      const newPurchases = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase));
+      setPurchases(prev => [...prev, ...newPurchases]);
+      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+      setHasMore(snapshot.docs.length === PAGE_SIZE);
+    } catch (error) {
+      console.error('Error loading more purchases:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    setLastVisible(null);
+    fetchInitialData();
+  };
 
   const handleAddToCart = () => {
     const product = products.find(p => p.id === selectedProduct);
@@ -155,6 +207,14 @@ export const Purchases: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
         <h1 className="text-2xl font-bold text-gray-900">المشتريات</h1>
         <div className="flex items-center gap-4 w-full sm:w-auto">
+          <button
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="p-2 text-gray-600 hover:text-pink-600 bg-white border border-gray-200 rounded-xl transition-all disabled:opacity-50"
+            title="تحديث البيانات"
+          >
+            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
           <ExportButtons data={exportData} filename="تقرير_المشتريات" />
           {user?.role === 'admin' && (
             <button
@@ -254,6 +314,19 @@ export const Purchases: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {hasMore && (
+        <div className="flex justify-center pt-4 print:hidden">
+          <button
+            onClick={loadMorePurchases}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-8 py-3 bg-white border border-gray-200 rounded-xl font-bold text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-50 shadow-sm"
+          >
+            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+            عرض المزيد من المشتريات
+          </button>
+        </div>
+      )}
 
       {/* New Purchase Modal */}
       {isModalOpen && (

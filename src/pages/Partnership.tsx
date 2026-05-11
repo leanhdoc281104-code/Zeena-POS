@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { doc, onSnapshot, setDoc, collection, query } from 'firebase/firestore';
+import React, { useState, useEffect, useCallback } from 'react';
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { Sale, Expense, Purchase, PartnershipSettings, ManufacturingCycle, ManufacturingSale, ManufacturingExpense } from '../types';
 import { formatCurrency } from '../utils/format';
-import { Users, DollarSign, PieChart as PieChartIcon, Save, TrendingUp } from 'lucide-react';
+import { Users, DollarSign, PieChart as PieChartIcon, Save, TrendingUp, RefreshCw, Loader2 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { format, parseISO, isToday, isThisWeek, isThisMonth, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
+import { format, parseISO, isToday, isThisWeek, isThisMonth, isWithinInterval, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns';
 import { ExportButtons } from '../components/ExportButtons';
 import { DateRangeFilter } from '../components/DateRangeFilter';
 
@@ -23,45 +23,96 @@ export const Partnership: React.FC = () => {
     partner2Paid: 0
   });
   const [isSaving, setIsSaving] = useState(false);
-  const [timeFilter, setTimeFilter] = useState('all');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const [timeFilter, setTimeFilter] = useState('currentMonth');
+  const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+
+  const fetchData = useCallback(async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      // Fetch settings separately (always needed)
+      const settingsSnap = await getDoc(doc(db, 'settings', 'partnership'));
+      if (settingsSnap.exists()) {
+        setSettings(settingsSnap.data() as PartnershipSettings);
+      }
+
+      // Prepare date filter
+      let start = startOfMonth(new Date());
+      let end = endOfMonth(new Date());
+
+      if (timeFilter === 'today') {
+        start = startOfDay(new Date());
+        end = endOfDay(new Date());
+      } else if (timeFilter === 'week') {
+        const today = new Date();
+        const first = today.getDate() - today.getDay();
+        start = new Date(today.setDate(first));
+        end = new Date(today.setDate(first + 6));
+      } else if (timeFilter === 'custom' && startDate && endDate) {
+        start = startOfDay(parseISO(startDate));
+        end = endOfDay(parseISO(endDate));
+      } else if (timeFilter === 'all') {
+        // Warning: this could be slow/expensive. Maybe limit it?
+      }
+
+      const startISO = start.toISOString();
+      const endISO = end.toISOString();
+
+      let queries: any[] = [];
+
+      if (timeFilter === 'all') {
+        queries = [
+          query(collection(db, 'sales')),
+          query(collection(db, 'expenses')),
+          query(collection(db, 'purchases')),
+          query(collection(db, 'manufacturing_cycles')),
+          query(collection(db, 'manufacturing_sales')),
+          query(collection(db, 'manufacturing_expenses'))
+        ];
+      } else {
+        queries = [
+          query(collection(db, 'sales'), where('date', '>=', startISO), where('date', '<=', endISO)),
+          query(collection(db, 'expenses'), where('date', '>=', startISO), where('date', '<=', endISO)),
+          query(collection(db, 'purchases'), where('date', '>=', startISO), where('date', '<=', endISO)),
+          query(collection(db, 'manufacturing_cycles'), where('startDate', '>=', startISO), where('startDate', '<=', endISO)),
+          query(collection(db, 'manufacturing_sales'), where('date', '>=', startISO), where('date', '<=', endISO)),
+          query(collection(db, 'manufacturing_expenses'), where('date', '>=', startISO), where('date', '<=', endISO))
+        ];
+      }
+
+      const [
+        salesSnap, expensesSnap, purchasesSnap,
+        cyclesSnap, mSalesSnap, mExpensesSnap
+      ] = await Promise.all(queries.map(q => getDocs(q)));
+
+      setSales(salesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale)));
+      setExpenses(expensesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
+      setPurchases(purchasesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase)));
+      setMfgCycles(cyclesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingCycle)));
+      setMfgSales(mSalesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingSale)));
+      setMfgExpenses(mExpensesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingExpense)));
+
+    } catch (error) {
+      console.error('Error fetching partnership data:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [timeFilter, startDate, endDate, isLoading]);
 
   useEffect(() => {
-    const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
-      setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale)));
-    });
-    const unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
-      setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
-    });
-    const unsubPurchases = onSnapshot(collection(db, 'purchases'), (snapshot) => {
-      setPurchases(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase)));
-    });
-    const unsubMfgCycles = onSnapshot(collection(db, 'manufacturing_cycles'), (snapshot) => {
-      setMfgCycles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingCycle)));
-    });
-    const unsubMfgSales = onSnapshot(collection(db, 'manufacturing_sales'), (snapshot) => {
-      setMfgSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingSale)));
-    });
-    const unsubMfgExpenses = onSnapshot(collection(db, 'manufacturing_expenses'), (snapshot) => {
-      setMfgExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingExpense)));
-    });
-    const unsubSettings = onSnapshot(doc(db, 'settings', 'partnership'), (doc) => {
-      if (doc.exists()) {
-        setSettings(doc.data() as PartnershipSettings);
-      }
-    });
+    fetchData();
+  }, [timeFilter, startDate, endDate]);
 
-    return () => {
-      unsubSales();
-      unsubExpenses();
-      unsubPurchases();
-      unsubMfgCycles();
-      unsubMfgSales();
-      unsubMfgExpenses();
-      unsubSettings();
-    };
-  }, []);
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    fetchData();
+  };
 
   const totalProfit = sales.reduce((sum, s) => sum + s.profit, 0);
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0) + purchases.reduce((sum, p) => sum + p.total, 0);
@@ -109,15 +160,48 @@ export const Partnership: React.FC = () => {
     <div className="space-y-6" dir="rtl">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-900">إدارة الشراكة</h1>
-        {user?.role === 'admin' && (
+        <div className="flex items-center gap-3">
           <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="bg-pink-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-pink-700 disabled:opacity-50"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="p-2 text-gray-600 hover:text-pink-600 bg-white border border-gray-200 rounded-xl transition-all disabled:opacity-50"
+            title="تحديث البيانات"
           >
-            <Save className="w-5 h-5" />
-            {isSaving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
+            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
           </button>
+          {user?.role === 'admin' && (
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="bg-pink-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-pink-700 disabled:opacity-50"
+            >
+              <Save className="w-5 h-5" />
+              {isSaving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3 w-full">
+        <select
+          value={timeFilter}
+          onChange={(e) => setTimeFilter(e.target.value)}
+          className="px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-pink-500 outline-none bg-white"
+        >
+          <option value="currentMonth">هذا الشهر</option>
+          <option value="today">اليوم</option>
+          <option value="week">هذا الأسبوع</option>
+          <option value="all">كل الأوقات</option>
+          <option value="custom">فترة مخصصة</option>
+        </select>
+        
+        {timeFilter === 'custom' && (
+          <DateRangeFilter
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={setStartDate}
+            onEndDateChange={setEndDate}
+          />
         )}
       </div>
 

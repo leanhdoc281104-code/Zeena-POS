@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import React, { useState, useEffect, useCallback } from 'react';
+import { collection, query, orderBy, getDocs, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Sale, Expense, Product, Purchase, ManufacturingCycle, ManufacturingSale, ManufacturingExpense } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import { TrendingUp, TrendingDown, DollarSign, Package, AlertTriangle, Filter, Calendar } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Package, AlertTriangle, Filter, Calendar, RefreshCw, Loader2 } from 'lucide-react';
 import { format, subDays, isAfter, parseISO, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter, startOfYear, endOfYear, eachDayOfInterval, eachMonthOfInterval, differenceInDays, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrency } from '../utils/format';
 
@@ -18,46 +18,15 @@ export const Dashboard: React.FC = () => {
   const [mfgSales, setMfgSales] = useState<ManufacturingSale[]>([]);
   const [mfgExpenses, setMfgExpenses] = useState<ManufacturingExpense[]>([]);
 
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+
   const [dateFilter, setDateFilter] = useState<'currentMonth' | 'prevMonth' | 'currentQuarter' | 'currentHalf' | 'currentYear' | 'custom'>('currentMonth');
   const [customStartDate, setCustomStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [customEndDate, setCustomEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [sourceFilter, setSourceFilter] = useState<'all' | 'store' | 'mfg'>('all');
 
-  useEffect(() => {
-    const unsubSales = onSnapshot(query(collection(db, 'sales'), orderBy('date', 'desc')), (snapshot) => {
-      setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale)));
-    });
-    const unsubExpenses = onSnapshot(query(collection(db, 'expenses'), orderBy('date', 'desc')), (snapshot) => {
-      setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
-    });
-    const unsubPurchases = onSnapshot(query(collection(db, 'purchases'), orderBy('date', 'desc')), (snapshot) => {
-      setPurchases(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase)));
-    });
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-    });
-    const unsubMfgCycles = onSnapshot(collection(db, 'manufacturing_cycles'), (snapshot) => {
-      setMfgCycles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingCycle)));
-    });
-    const unsubMfgSales = onSnapshot(collection(db, 'manufacturing_sales'), (snapshot) => {
-      setMfgSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingSale)));
-    });
-    const unsubMfgExpenses = onSnapshot(collection(db, 'manufacturing_expenses'), (snapshot) => {
-      setMfgExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingExpense)));
-    });
-
-    return () => {
-      unsubSales();
-      unsubExpenses();
-      unsubPurchases();
-      unsubProducts();
-      unsubMfgCycles();
-      unsubMfgSales();
-      unsubMfgExpenses();
-    };
-  }, []);
-
-  const getActiveDateRange = () => {
+  const getActiveDateRange = useCallback(() => {
     const today = new Date();
     switch (dateFilter) {
       case 'currentMonth':
@@ -81,9 +50,97 @@ export const Dashboard: React.FC = () => {
       default:
         return { start: startOfMonth(today), end: endOfMonth(today) };
     }
-  };
+  }, [dateFilter, customStartDate, customEndDate]);
 
   const { start, end } = getActiveDateRange();
+
+  const fetchDashboardData = useCallback(async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      const startISO = start.toISOString();
+      const endISO = end.toISOString();
+
+      // Fetch store sales filtered by date
+      const salesQuery = query(
+        collection(db, 'sales'),
+        where('date', '>=', startISO),
+        where('date', '<=', endISO),
+        orderBy('date', 'desc')
+      );
+      
+      const expensesQuery = query(
+        collection(db, 'expenses'),
+        where('date', '>=', startISO),
+        where('date', '<=', endISO),
+        orderBy('date', 'desc')
+      );
+
+      const purchasesQuery = query(
+        collection(db, 'purchases'),
+        where('date', '>=', startISO),
+        where('date', '<=', endISO),
+        orderBy('date', 'desc')
+      );
+
+      // Fetch products (still need this for low stock alerts, but maybe get all is okay here if not too many)
+      const productsQuery = query(collection(db, 'products'));
+
+      const mfgCyclesQuery = query(
+        collection(db, 'manufacturing_cycles'),
+        where('startDate', '>=', startISO),
+        where('startDate', '<=', endISO)
+      );
+
+      const mfgSalesQuery = query(
+        collection(db, 'manufacturing_sales'),
+        where('date', '>=', startISO),
+        where('date', '<=', endISO)
+      );
+
+      const mfgExpensesQuery = query(
+        collection(db, 'manufacturing_expenses'),
+        where('date', '>=', startISO),
+        where('date', '<=', endISO)
+      );
+
+      const [
+        salesSnap, expensesSnap, purchasesSnap, productsSnap, 
+        mfgCyclesSnap, mfgSalesSnap, mfgExpensesSnap
+      ] = await Promise.all([
+        getDocs(salesQuery),
+        getDocs(expensesQuery),
+        getDocs(purchasesQuery),
+        getDocs(productsQuery),
+        getDocs(mfgCyclesQuery),
+        getDocs(mfgSalesQuery),
+        getDocs(mfgExpensesQuery)
+      ]);
+
+      setSales(salesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale)));
+      setExpenses(expensesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
+      setPurchases(purchasesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase)));
+      setProducts(productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+      setMfgCycles(mfgCyclesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingCycle)));
+      setMfgSales(mfgSalesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingSale)));
+      setMfgExpenses(mfgExpensesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingExpense)));
+
+      setLastRefreshed(new Date());
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [start, end]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [dateFilter, customStartDate, customEndDate]);
+
+  const handleRefresh = () => {
+    fetchDashboardData();
+  };
 
   const isDateInRange = (dateStr: string) => {
     if (!dateStr) return false;
@@ -168,9 +225,24 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="space-y-6 print:space-y-4" dir="rtl">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
-        <h1 className="text-2xl font-bold text-gray-900">نظرة عامة على لوحة التحكم</h1>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold text-gray-900">نظرة عامة على لوحة التحكم</h1>
+          {lastRefreshed && (
+            <p className="text-xs text-gray-500">
+              آخر تحديث: {format(lastRefreshed, 'HH:mm:ss')}
+            </p>
+          )}
+        </div>
         
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="p-2 text-gray-600 hover:text-pink-600 bg-white border border-gray-200 rounded-xl transition-all disabled:opacity-50"
+            title="تحديث البيانات"
+          >
+            <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
           <div className="flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
             <button
               onClick={() => setSourceFilter('all')}
