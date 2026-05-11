@@ -41,7 +41,7 @@ export const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8" dir="rtl">
       <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-3xl shadow-xl border border-gray-100">
         <div className="text-center">
-          <img src="/logo.png" alt="نظام زينة" className="mx-auto h-24 object-contain mb-6" />
+          <img src={settings?.storeLogo || "/logo.png"} alt="نظام زينة" className="mx-auto h-24 object-contain mb-6" />
           <p className="mt-3 text-sm text-gray-500">
             سجل الدخول للوصول إلى نظام نقطة البيع الخاص بك
           </p>

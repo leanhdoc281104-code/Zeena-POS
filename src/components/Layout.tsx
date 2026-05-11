@@ -62,7 +62,7 @@ export const Layout: React.FC = () => {
         isMobileMenuOpen ? "translate-x-0" : "translate-x-full"
       )}>
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
-          <img src="/logo.png" alt="نظام زينة" className="h-10 object-contain" />
+          <img src={settings?.storeLogo || "/logo.png"} alt="نظام زينة" className="h-10 object-contain" />
           <button onClick={() => setIsMobileMenuOpen(false)} className="lg:hidden">
             <X className="w-6 h-6 text-gray-500" />
           </button>
@@ -108,7 +108,7 @@ export const Layout: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden print-content">
         {/* Mobile Header */}
         <header className="lg:hidden flex items-center justify-between h-16 px-4 bg-white border-b border-gray-200 print:hidden">
-          <img src="/logo.png" alt="نظام زينة" className="h-8 object-contain" />
+          <img src={settings?.storeLogo || "/logo.png"} alt="نظام زينة" className="h-8 object-contain" />
           <button onClick={() => setIsMobileMenuOpen(true)}>
             <Menu className="w-6 h-6 text-gray-500" />
           </button>

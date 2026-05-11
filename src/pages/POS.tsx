@@ -890,7 +890,7 @@ export const POS: React.FC = () => {
             {/* Receipt Preview */}
             <div id="receipt-preview" className="flex-1 overflow-y-auto bg-gray-50 p-4 rounded-xl border border-gray-200 mb-6 font-mono text-sm text-gray-800" dir="rtl">
               <div className="text-center mb-4 border-b border-gray-300 pb-4">
-                <img src="/logo.png" alt="Store Logo" className="mx-auto h-16 mb-2 object-contain" />
+                <img src={storeSettings?.storeLogo || "/logo.png"} alt="Store Logo" className="mx-auto h-16 mb-2 object-contain" />
                 {storeSettings?.storeAddress && (
                   <p className="text-sm text-gray-600 mt-1">{storeSettings.storeAddress}</p>
                 )}
