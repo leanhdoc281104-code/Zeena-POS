@@ -1,9 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  collection, addDoc, doc, updateDoc, increment, 
-  serverTimestamp, getDoc, query, limit, startAfter, orderBy, getDocs, where, writeBatch 
-} from 'firebase/firestore';
-import { db } from '../firebase';
+import { apiService } from '../services/apiService';
 import { useAuth } from '../AuthContext';
 import { Product, SaleItem, Customer, StoreSettings } from '../types';
 import { Toast } from '../components/Toast';
@@ -63,10 +59,9 @@ export const POS: React.FC = () => {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const docRef = doc(db, 'settings', 'store');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setStoreSettings(docSnap.data() as StoreSettings);
+        const data = await apiService.getDoc<StoreSettings>('settings', 'store');
+        if (data) {
+          setStoreSettings(data);
         }
       } catch (error) {
         console.error('Error fetching store settings:', error);
@@ -76,27 +71,58 @@ export const POS: React.FC = () => {
 
     // Initial product load (Limited to 24 for a good grid)
     const loadInitialProducts = async () => {
+      // Check cache first
+      const cachedProducts = sessionStorage.getItem('pos_initial_products');
+      if (cachedProducts) {
+        try {
+          const parsed = JSON.parse(cachedProducts);
+          if (new Date().getTime() - parsed.timestamp < 10 * 60 * 1000) { // 10 min cache
+            setProducts(parsed.data);
+            setHasMore(false);
+            return;
+          }
+        } catch (e) {}
+      }
+
       try {
-        const q = query(
-          collection(db, 'products'),
-          orderBy('name'),
-          limit(24)
-        );
-        const snapshot = await getDocs(q);
-        const fetchedProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-        setProducts(fetchedProducts);
-        setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
-        setHasMore(snapshot.docs.length === 24);
-      } catch (error) {
+        const data = await apiService.getCollection<Product>('products', {
+          orderBy: 'name',
+          limit: 100 // Load more initially for POS
+        });
+        setProducts(data);
+        setHasMore(data.length === 100);
+        
+        sessionStorage.setItem('pos_initial_products', JSON.stringify({
+          data,
+          timestamp: new Date().getTime()
+        }));
+      } catch (error: any) {
         console.error('Error loading initial products:', error);
       }
     };
 
     const loadCustomers = async () => {
+      // Check cache first
+      const cachedCustomers = sessionStorage.getItem('pos_customers');
+      if (cachedCustomers) {
+        try {
+          const parsed = JSON.parse(cachedCustomers);
+          if (new Date().getTime() - parsed.timestamp < 30 * 60 * 1000) { // 30 min cache
+            setCustomers(parsed.data);
+            return;
+          }
+        } catch (e) {}
+      }
+
       try {
-        const snapshot = await getDocs(collection(db, 'customers'));
-        setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
-      } catch (error) {
+        const data = await apiService.getCollection<Customer>('customers', { orderBy: 'name', limit: 500 });
+        setCustomers(data);
+        
+        sessionStorage.setItem('pos_customers', JSON.stringify({
+          data,
+          timestamp: new Date().getTime()
+        }));
+      } catch (error: any) {
         console.error('Error loading customers:', error);
       }
     };
@@ -106,20 +132,16 @@ export const POS: React.FC = () => {
   }, []);
 
   const loadMoreProducts = async () => {
-    if (!lastVisible || isLoadingMore || !hasMore) return;
+    if (isLoadingMore || !hasMore) return;
     setIsLoadingMore(true);
     try {
-      const q = query(
-        collection(db, 'products'),
-        orderBy('name'),
-        startAfter(lastVisible),
-        limit(24)
-      );
-      const snapshot = await getDocs(q);
-      const fetchedProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-      setProducts(prev => [...prev, ...fetchedProducts]);
-      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
-      setHasMore(snapshot.docs.length === 24);
+      const data = await apiService.getCollection<Product>('products', {
+        orderBy: 'name',
+        limit: 100,
+        offset: products.length
+      });
+      setProducts(prev => [...prev, ...data]);
+      setHasMore(data.length === 100);
     } catch (error) {
       console.error('Error loading more products:', error);
     } finally {
@@ -127,52 +149,35 @@ export const POS: React.FC = () => {
     }
   };
 
-  // Debounced search logic to reduce Firestore reads
+  // Debounced search logic for local products first
   useEffect(() => {
     const timer = setTimeout(async () => {
-      if (!searchQuery) {
-        // Reset to initial limited view if search is cleared
-        // But we already have the paged items, so maybe just don't do anything?
-        // Actually, searching might have replaced the 'products' state.
-        return;
-      }
+      if (!searchQuery) return;
 
       setSearchLoading(true);
       try {
-        // 1. Try exact barcode match (fast and precise)
-        const barcodeQuery = query(collection(db, 'products'), where('barcode', '==', searchQuery), limit(1));
-        const barcodeSnap = await getDocs(barcodeQuery);
-        
-        if (!barcodeSnap.empty) {
-          const foundProduct = { id: barcodeSnap.docs[0].id, ...barcodeSnap.docs[0].data() } as Product;
-          // Add to current products list if not already there
-          setProducts(prev => {
-            if (prev.find(p => p.id === foundProduct.id)) return prev;
-            return [foundProduct, ...prev];
-          });
-          // Auto-add logic
-          addToCart(foundProduct);
+        // Try to find exact barcode match locally first
+        const found = products.find(p => p.barcode === searchQuery);
+        if (found) {
+          addToCart(found);
           setSearchQuery('');
-          setToast({ message: `تمت إضافة ${foundProduct.name}`, type: 'success' });
+          setToast({ message: `تمت إضافة ${found.name}`, type: 'success' });
           return;
         }
 
-        // 2. Try name search if barcode didn't match and query is long enough
-        if (searchQuery.length >= 3) {
-          const nameQuery = query(
-            collection(db, 'products'),
-            where('name', '>=', searchQuery),
-            where('name', '<=', searchQuery + '\uf8ff'),
-            limit(10)
-          );
-          const nameSnap = await getDocs(nameQuery);
-          const results = nameSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-          
-          setProducts(prev => {
-            const existingIds = new Set(prev.map(p => p.id));
-            const newItems = results.filter(p => !existingIds.has(p.id));
-            return [...newItems, ...prev];
-          });
+        // If not found locally, search on server
+        const results = await apiService.getCollection<Product>('products', {
+          whereField: 'barcode',
+          whereValue: searchQuery,
+          limit: 1
+        });
+        
+        if (results.length > 0) {
+          const foundProduct = results[0];
+          setProducts(prev => [foundProduct, ...prev]);
+          addToCart(foundProduct);
+          setSearchQuery('');
+          setToast({ message: `تمت إضافة ${foundProduct.name}`, type: 'success' });
         }
       } catch (error) {
         console.error('Search error:', error);
@@ -187,14 +192,19 @@ export const POS: React.FC = () => {
   const handleScan = async (barcode: string) => {
     let product = products.find(p => p.barcode === barcode);
     
-    // If not in local paged products, check Firestore specifically
+    // If not in local paged products, check API specifically
     if (!product) {
-      const q = query(collection(db, 'products'), where('barcode', '==', barcode), limit(1));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        product = { id: snap.docs[0].id, ...snap.docs[0].data() } as Product;
-        setProducts(prev => [product!, ...prev]);
-      }
+      try {
+        const results = await apiService.getCollection<Product>('products', {
+          whereField: 'barcode',
+          whereValue: barcode,
+          limit: 1
+        });
+        if (results.length > 0) {
+          product = results[0];
+          setProducts(prev => [product!, ...prev]);
+        }
+      } catch (e) {}
     }
 
     if (product) {
@@ -325,7 +335,6 @@ export const POS: React.FC = () => {
 
     setIsCheckingOut(true);
     try {
-      const batch = writeBatch(db);
       const saleData: any = {
         items: cart,
         total,
@@ -334,39 +343,17 @@ export const POS: React.FC = () => {
         paymentMethod,
         date: new Date().toISOString(),
         cashierId: user?.uid,
-        customerId: null,
-        createdAt: serverTimestamp()
+        customerId: selectedCustomer || null,
+        createdAt: new Date().toISOString()
       };
 
       if (['bankak', 'fawry', 'oocash'].includes(paymentMethod) && receiptUrl) {
         saleData.receiptUrl = receiptUrl;
       }
 
-      // Create sale record
-      const saleRef = doc(collection(db, 'sales'));
-      batch.set(saleRef, saleData);
+      const res = await apiService.checkout(saleData, cart);
 
-      // Update product stock in batch
-      for (const item of cart) {
-        const productRef = doc(db, 'products', item.productId);
-        batch.update(productRef, {
-          stock: increment(-item.qty),
-          updatedAt: new Date().toISOString()
-        });
-      }
-
-      // Update customer debt if applicable in batch
-      if (paymentMethod === 'debt' && selectedCustomer) {
-        const customerRef = doc(db, 'customers', selectedCustomer);
-        batch.update(customerRef, {
-          debtBalance: increment(total),
-          updatedAt: new Date().toISOString()
-        });
-      }
-
-      await batch.commit();
-
-      // Manually update local products stock since we're not using onSnapshot anymore
+      // Manually update local products stock
       setProducts(prev => prev.map(p => {
         const cartItem = cart.find(item => item.productId === p.id);
         if (cartItem) {
@@ -378,7 +365,7 @@ export const POS: React.FC = () => {
       const customerName = selectedCustomer ? customers.find(c => c.id === selectedCustomer)?.name : undefined;
       
       setLastSale({
-        id: saleRef.id,
+        id: res.id,
         cart: [...cart],
         total,
         discount,

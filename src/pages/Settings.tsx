@@ -6,6 +6,9 @@ import { StoreSettings } from '../types';
 import { Save, Store, MapPin, Image as ImageIcon, AlertTriangle } from 'lucide-react';
 import { compressImage } from '../utils/imageUtils';
 
+import { apiService } from '../services/apiService';
+import { Database, RefreshCw } from 'lucide-react';
+
 export const Settings: React.FC = () => {
   const { user } = useAuth();
   const [settings, setSettings] = useState<StoreSettings>({
@@ -16,14 +19,74 @@ export const Settings: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+
+  // ... (existing code and handleClearData)
+
+  const handleMigrateToLocal = async () => {
+    if (user?.role !== 'admin') return;
+    if (!window.confirm('سيقوم هذا الإجراء بنسخ كافة البيانات من Firebase إلى قاعدة البيانات المحلية الجديدة. هل تود الاستمرار؟')) return;
+
+    setMigrating(true);
+    try {
+      const collectionsToMigrate = [
+        'users',
+        'products',
+        'sales',
+        'purchases',
+        'expenses',
+        'customers',
+        'manufacturing_cycles',
+        'manufacturing_sales',
+        'manufacturing_expenses'
+      ];
+
+      for (const colName of collectionsToMigrate) {
+        const querySnapshot = await getDocs(collection(db, colName));
+        console.log(`Migrating ${colName}: ${querySnapshot.size} docs`);
+        
+        for (const document of querySnapshot.docs) {
+          const data = document.id ? { id: document.id, ...document.data() } : document.data();
+          try {
+            await apiService.addDoc(colName, data);
+          } catch (e) {
+            // Already exists or other error, try update
+            try {
+              await apiService.updateDoc(colName, document.id, data);
+            } catch (innerE) {
+              console.error(`Failed to migrate doc ${document.id} in ${colName}`);
+            }
+          }
+        }
+      }
+
+      // Migrate settings
+      const settingsSnap = await getDoc(doc(db, 'settings', 'store'));
+      if (settingsSnap.exists()) {
+        await apiService.addDoc('settings', { key: 'store', value: JSON.stringify(settingsSnap.data()) });
+      }
+
+      alert('تمت الهجرة بنجاح! يمكنك الآن الاعتماد على قاعدة البيانات المحلية.');
+    } catch (error) {
+      console.error('Migration error:', error);
+      alert('حدث خطأ أثناء الهجرة. تأكد من أن السيرفر يعمل.');
+    } finally {
+      setMigrating(false);
+    }
+  };
 
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const docRef = doc(db, 'settings', 'store');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setSettings(docSnap.data() as StoreSettings);
+        const data = await apiService.getDoc<StoreSettings>('settings', 'store');
+        if (data) {
+          setSettings(data);
+        } else {
+          // Try fallback to firebase for initial migration context
+          const docSnap = await getDoc(doc(db, 'settings', 'store'));
+          if (docSnap.exists()) {
+            setSettings(docSnap.data() as StoreSettings);
+          }
         }
       } catch (error) {
         console.error('Error fetching settings:', error);
@@ -39,8 +102,7 @@ export const Settings: React.FC = () => {
     e.preventDefault();
     setSaving(true);
     try {
-      const docRef = doc(db, 'settings', 'store');
-      await setDoc(docRef, settings);
+      await apiService.updateDoc('settings', 'store', settings);
       alert('تم حفظ الإعدادات بنجاح');
     } catch (error) {
       console.error('Error saving settings:', error);
@@ -222,6 +284,39 @@ export const Settings: React.FC = () => {
           )}
         </form>
       </div>
+
+      {user?.role === 'admin' && (
+        <div className="mt-8 bg-blue-50 rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
+          <div className="p-6 border-b border-blue-100 bg-blue-100/50">
+            <h2 className="text-xl font-bold text-blue-800 flex items-center gap-2">
+              <Database className="w-6 h-6" />
+              تجاوز حدود Firebase (هجرة البيانات)
+            </h2>
+            <p className="text-blue-600 mt-1">
+              انقل بياناتك إلى الاستضافة المحلية (Hostinger) للتخلص من مشاكل حدود القراءة اليومية نهائياً.
+            </p>
+          </div>
+          <div className="p-6">
+            <button
+              onClick={handleMigrateToLocal}
+              disabled={migrating}
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors disabled:opacity-70"
+            >
+              {migrating ? (
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+              ) : (
+                <>
+                  <RefreshCw className="w-5 h-5" />
+                  بدء هجرة البيانات إلى SQLite
+                </>
+              )}
+            </button>
+            <p className="text-xs text-blue-500 mt-3 text-center">
+              ملاحظة: هذا الإجراء لا يمسح بيانات Firebase الأصلية، بل ينسخها فقط.
+            </p>
+          </div>
+        </div>
+      )}
 
       {user?.role === 'admin' && (
         <div className="mt-8 bg-red-50 rounded-2xl shadow-sm border border-red-100 overflow-hidden">

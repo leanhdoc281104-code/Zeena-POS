@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, addDoc, doc, updateDoc, increment, serverTimestamp, query, orderBy, deleteDoc, getDocs, limit, startAfter, where } from 'firebase/firestore';
-import { db } from '../firebase';
+import { apiService } from '../services/apiService';
 import { useAuth } from '../AuthContext';
 import { Product, Purchase, PurchaseItem } from '../types';
 import { Plus, Search, Trash2, Package, Eye, Loader2, RefreshCw } from 'lucide-react';
@@ -9,13 +8,13 @@ import { formatCurrency } from '../utils/format';
 import { ExportButtons } from '../components/ExportButtons';
 import { DateRangeFilter } from '../components/DateRangeFilter';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 50;
 
 export const Purchases: React.FC = () => {
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -39,21 +38,20 @@ export const Purchases: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // Fetch all products for the purchase form (this might be large, but usually okay for 200 products)
-      const productsSnap = await getDocs(collection(db, 'products'));
-      setProducts(productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+      // Fetch all products for the purchase form
+      const productsData = await apiService.getCollection<Product>('products', { limit: 1000 });
+      setProducts(productsData);
 
       // Fetch initial purchases
-      const q = query(
-        collection(db, 'purchases'),
-        orderBy('date', 'desc'),
-        limit(PAGE_SIZE)
-      );
-      const purchasesSnap = await getDocs(q);
-      const newPurchases = purchasesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase));
-      setPurchases(newPurchases);
-      setLastVisible(purchasesSnap.docs[purchasesSnap.docs.length - 1]);
-      setHasMore(purchasesSnap.docs.length === PAGE_SIZE);
+      const purchasesData = await apiService.getCollection<Purchase>('purchases', {
+        orderBy: 'date',
+        orderDir: 'desc',
+        limit: PAGE_SIZE,
+        offset: 0
+      });
+      setPurchases(purchasesData);
+      setOffset(PAGE_SIZE);
+      setHasMore(purchasesData.length === PAGE_SIZE);
     } catch (error) {
       console.error('Error fetching initial data:', error);
     } finally {
@@ -67,21 +65,19 @@ export const Purchases: React.FC = () => {
   }, []);
 
   const loadMorePurchases = async () => {
-    if (!lastVisible || isLoading || !hasMore) return;
+    if (isLoading || !hasMore) return;
     setIsLoading(true);
 
     try {
-      const q = query(
-        collection(db, 'purchases'),
-        orderBy('date', 'desc'),
-        startAfter(lastVisible),
-        limit(PAGE_SIZE)
-      );
-      const snapshot = await getDocs(q);
-      const newPurchases = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase));
-      setPurchases(prev => [...prev, ...newPurchases]);
-      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
-      setHasMore(snapshot.docs.length === PAGE_SIZE);
+      const data = await apiService.getCollection<Purchase>('purchases', {
+        orderBy: 'date',
+        orderDir: 'desc',
+        limit: PAGE_SIZE,
+        offset
+      });
+      setPurchases(prev => [...prev, ...data]);
+      setOffset(prev => prev + PAGE_SIZE);
+      setHasMore(data.length === PAGE_SIZE);
     } catch (error) {
       console.error('Error loading more purchases:', error);
     } finally {
@@ -91,7 +87,7 @@ export const Purchases: React.FC = () => {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    setLastVisible(null);
+    setOffset(0);
     fetchInitialData();
   };
 
@@ -136,29 +132,21 @@ export const Purchases: React.FC = () => {
     const total = cart.reduce((sum, item) => sum + (item.cost * item.qty), 0);
 
     try {
-      // Create purchase record
-      await addDoc(collection(db, 'purchases'), {
+      const purchaseData = {
         items: cart,
         total,
         supplierName,
         date: new Date().toISOString(),
         recordedBy: user.uid,
-        createdAt: serverTimestamp()
-      });
+        createdAt: new Date().toISOString()
+      };
 
-      // Update product stock and cost
-      for (const item of cart) {
-        const productRef = doc(db, 'products', item.productId);
-        await updateDoc(productRef, {
-          stock: increment(item.qty),
-          cost: item.cost, // Update the cost to the latest purchase cost
-          updatedAt: new Date().toISOString()
-        });
-      }
+      await apiService.recordPurchase(purchaseData, cart);
 
       setIsModalOpen(false);
       setCart([]);
       setSupplierName('');
+      handleRefresh();
     } catch (error) {
       console.error('Error saving purchase:', error);
       alert('فشل في حفظ المشتريات.');
@@ -169,7 +157,8 @@ export const Purchases: React.FC = () => {
     if (user?.role !== 'admin') return;
     if (window.confirm('هل أنت متأكد أنك تريد حذف هذه العملية؟')) {
       try {
-        await deleteDoc(doc(db, 'purchases', id));
+        await apiService.deleteDoc('purchases', id);
+        handleRefresh();
       } catch (error) {
         console.error('Error deleting purchase:', error);
         alert('فشل في حذف العملية.');

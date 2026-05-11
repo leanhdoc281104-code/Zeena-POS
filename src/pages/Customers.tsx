@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, addDoc, doc, updateDoc, serverTimestamp, increment, getDocs, orderBy, query } from 'firebase/firestore';
-import { db } from '../firebase';
+import { apiService } from '../services/apiService';
 import { Customer } from '../types';
 import { useAuth } from '../AuthContext';
 import { Plus, Users, Search, DollarSign, RefreshCw, Loader2 } from 'lucide-react';
@@ -31,9 +30,8 @@ export const Customers: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const q = query(collection(db, 'customers'), orderBy('name'));
-      const snapshot = await getDocs(q);
-      setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
+      const data = await apiService.getCollection<Customer>('customers', { orderBy: 'name', limit: 500 });
+      setCustomers(data);
     } catch (error) {
       console.error('Error fetching customers:', error);
     } finally {
@@ -56,7 +54,7 @@ export const Customers: React.FC = () => {
     if (!user) return;
 
     try {
-      await addDoc(collection(db, 'customers'), {
+      await apiService.addDoc('customers', {
         name: formData.name,
         phone: formData.phone,
         debtBalance: parseFloat(formData.debtBalance) || 0,
@@ -65,6 +63,7 @@ export const Customers: React.FC = () => {
       });
       setIsModalOpen(false);
       setFormData({ name: '', phone: '', debtBalance: '0' });
+      fetchCustomers();
     } catch (error) {
       console.error('Error adding customer:', error);
       alert('فشل في إضافة العميل.');
@@ -79,14 +78,14 @@ export const Customers: React.FC = () => {
     if (amount <= 0) return;
 
     try {
-      const customerRef = doc(db, 'customers', selectedCustomer.id);
-      await updateDoc(customerRef, {
-        debtBalance: increment(-amount),
+      await apiService.updateDoc('customers', selectedCustomer.id, {
+        debtBalance: selectedCustomer.debtBalance - amount,
         updatedAt: new Date().toISOString()
       });
       setIsPaymentModalOpen(false);
       setPaymentAmount('');
       setSelectedCustomer(null);
+      fetchCustomers();
     } catch (error) {
       console.error('Error recording payment:', error);
       alert('فشل في تسجيل الدفعة.');

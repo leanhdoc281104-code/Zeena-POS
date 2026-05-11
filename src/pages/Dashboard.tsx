@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, query, orderBy, getDocs, where } from 'firebase/firestore';
-import { db } from '../firebase';
 import { Sale, Expense, Product, Purchase, ManufacturingCycle, ManufacturingSale, ManufacturingExpense } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { TrendingUp, TrendingDown, DollarSign, Package, AlertTriangle, Filter, Calendar, RefreshCw, Loader2 } from 'lucide-react';
 import { format, subDays, isAfter, parseISO, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter, startOfYear, endOfYear, eachDayOfInterval, eachMonthOfInterval, differenceInDays, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrency } from '../utils/format';
+import { useAuth } from '../AuthContext';
+import { apiService } from '../services/apiService';
 
 import { ExportButtons } from '../components/ExportButtons';
 
@@ -20,6 +20,7 @@ export const Dashboard: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [errorStatus, setErrorStatus] = useState<string | null>(null);
 
   const [dateFilter, setDateFilter] = useState<'currentMonth' | 'prevMonth' | 'currentQuarter' | 'currentHalf' | 'currentYear' | 'custom'>('currentMonth');
   const [customStartDate, setCustomStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
@@ -52,94 +53,92 @@ export const Dashboard: React.FC = () => {
     }
   }, [dateFilter, customStartDate, customEndDate]);
 
-  const { start, end } = getActiveDateRange();
+  const { start, end } = React.useMemo(() => getActiveDateRange(), [getActiveDateRange]);
 
-  const fetchDashboardData = useCallback(async () => {
+  const fetchDashboardData = useCallback(async (force = false) => {
     if (isLoading) return;
+    
+    const cacheKey = `dashboard_data_v2_${dateFilter}_${customStartDate}_${customEndDate}`;
+    const cachedData = sessionStorage.getItem(cacheKey);
+    
+    if (!force && cachedData) {
+      try {
+        const parsed = JSON.parse(cachedData);
+        if (new Date().getTime() - parsed.timestamp < 2 * 60 * 1000) {
+          setSales(parsed.sales);
+          setExpenses(parsed.expenses);
+          setPurchases(parsed.purchases);
+          setProducts(parsed.products);
+          setMfgCycles(parsed.mfgCycles);
+          setMfgSales(parsed.mfgSales);
+          setMfgExpenses(parsed.mfgExpenses);
+          setLastRefreshed(new Date(parsed.timestamp));
+          setErrorStatus(null);
+          return;
+        }
+      } catch (e) {}
+    }
+
     setIsLoading(true);
 
     try {
       const startISO = start.toISOString();
       const endISO = end.toISOString();
 
-      // Fetch store sales filtered by date
-      const salesQuery = query(
-        collection(db, 'sales'),
-        where('date', '>=', startISO),
-        where('date', '<=', endISO),
-        orderBy('date', 'desc')
-      );
-      
-      const expensesQuery = query(
-        collection(db, 'expenses'),
-        where('date', '>=', startISO),
-        where('date', '<=', endISO),
-        orderBy('date', 'desc')
-      );
-
-      const purchasesQuery = query(
-        collection(db, 'purchases'),
-        where('date', '>=', startISO),
-        where('date', '<=', endISO),
-        orderBy('date', 'desc')
-      );
-
-      // Fetch products (still need this for low stock alerts, but maybe get all is okay here if not too many)
-      const productsQuery = query(collection(db, 'products'));
-
-      const mfgCyclesQuery = query(
-        collection(db, 'manufacturing_cycles'),
-        where('startDate', '>=', startISO),
-        where('startDate', '<=', endISO)
-      );
-
-      const mfgSalesQuery = query(
-        collection(db, 'manufacturing_sales'),
-        where('date', '>=', startISO),
-        where('date', '<=', endISO)
-      );
-
-      const mfgExpensesQuery = query(
-        collection(db, 'manufacturing_expenses'),
-        where('date', '>=', startISO),
-        where('date', '<=', endISO)
-      );
-
       const [
-        salesSnap, expensesSnap, purchasesSnap, productsSnap, 
-        mfgCyclesSnap, mfgSalesSnap, mfgExpensesSnap
+        salesSnap,
+        expensesSnap,
+        purchasesSnap,
+        productsSnap,
+        mfgCyclesSnap,
+        mfgSalesSnap,
+        mfgExpensesSnap
       ] = await Promise.all([
-        getDocs(salesQuery),
-        getDocs(expensesQuery),
-        getDocs(purchasesQuery),
-        getDocs(productsQuery),
-        getDocs(mfgCyclesQuery),
-        getDocs(mfgSalesQuery),
-        getDocs(mfgExpensesQuery)
+        apiService.getCollection<Sale>('sales', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 1000 }),
+        apiService.getCollection<Expense>('expenses', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 1000 }),
+        apiService.getCollection<Purchase>('purchases', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 1000 }),
+        apiService.getCollection<Product>('products', { limit: 500 }),
+        apiService.getCollection<ManufacturingCycle>('manufacturing_cycles', { whereField: 'startDate', whereValue: endISO, whereOp: '<=', limit: 500 }),
+        apiService.getCollection<ManufacturingSale>('manufacturing_sales', { whereField: 'date', whereValue: startISO, whereOp: '>=', limit: 500 }),
+        apiService.getCollection<ManufacturingExpense>('manufacturing_expenses', { whereField: 'date', whereValue: startISO, whereOp: '>=', limit: 500 })
       ]);
 
-      setSales(salesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale)));
-      setExpenses(expensesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
-      setPurchases(purchasesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase)));
-      setProducts(productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-      setMfgCycles(mfgCyclesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingCycle)));
-      setMfgSales(mfgSalesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingSale)));
-      setMfgExpenses(mfgExpensesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingExpense)));
+      const freshData = {
+        sales: salesSnap,
+        expenses: expensesSnap,
+        purchases: purchasesSnap,
+        products: productsSnap,
+        mfgCycles: mfgCyclesSnap,
+        mfgSales: mfgSalesSnap,
+        mfgExpenses: mfgExpensesSnap,
+        timestamp: new Date().getTime()
+      };
 
+      setSales(freshData.sales);
+      setExpenses(freshData.expenses);
+      setPurchases(freshData.purchases);
+      setProducts(freshData.products);
+      setMfgCycles(freshData.mfgCycles);
+      setMfgSales(freshData.mfgSales);
+      setMfgExpenses(freshData.mfgExpenses);
+      
+      sessionStorage.setItem(cacheKey, JSON.stringify(freshData));
       setLastRefreshed(new Date());
-    } catch (error) {
+      setErrorStatus(null);
+    } catch (error: any) {
       console.error('Error fetching dashboard data:', error);
+      setErrorStatus('fetch_error');
     } finally {
       setIsLoading(false);
     }
-  }, [start, end]);
+  }, [start, end, dateFilter, customStartDate, customEndDate]);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [dateFilter, customStartDate, customEndDate]);
+    fetchDashboardData(false);
+  }, [fetchDashboardData]);
 
   const handleRefresh = () => {
-    fetchDashboardData();
+    fetchDashboardData(true);
   };
 
   const isDateInRange = (dateStr: string) => {
@@ -235,6 +234,12 @@ export const Dashboard: React.FC = () => {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
+          {errorStatus === 'quota_exceeded' && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm">
+              <AlertTriangle className="w-4 h-4" />
+              <span>انتهى حد القراءة لليوم</span>
+            </div>
+          )}
           <button
             onClick={handleRefresh}
             disabled={isLoading}

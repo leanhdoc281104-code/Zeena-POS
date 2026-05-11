@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, addDoc, doc, updateDoc, deleteDoc, query, orderBy, getDocs, where } from 'firebase/firestore';
-import { db } from '../firebase';
+import { apiService } from '../services/apiService';
 import { useAuth } from '../AuthContext';
 import { ManufacturingCycle, ManufacturingSale, ManufacturingExpense } from '../types';
 import { Plus, Edit, Trash2, X, Factory, DollarSign, Package, FileText, Receipt, CheckCircle, Clock, LayoutDashboard, Handshake, RefreshCw, Loader2 } from 'lucide-react';
@@ -55,19 +54,15 @@ export const Manufacturing: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const cyclesQuery = query(collection(db, 'manufacturing_cycles'), orderBy('createdAt', 'desc'));
-      const salesQuery = query(collection(db, 'manufacturing_sales'), orderBy('date', 'desc'));
-      const expensesQuery = query(collection(db, 'manufacturing_expenses'), orderBy('date', 'desc'));
-
-      const [cyclesSnap, salesSnap, expensesSnap] = await Promise.all([
-        getDocs(cyclesQuery),
-        getDocs(salesQuery),
-        getDocs(expensesQuery)
+      const [cyclesData, salesData, expensesData] = await Promise.all([
+        apiService.getCollection<ManufacturingCycle>('manufacturing_cycles', { orderBy: 'createdAt', orderDir: 'desc', limit: 100 }),
+        apiService.getCollection<ManufacturingSale>('manufacturing_sales', { orderBy: 'date', orderDir: 'desc', limit: 200 }),
+        apiService.getCollection<ManufacturingExpense>('manufacturing_expenses', { orderBy: 'date', orderDir: 'desc', limit: 200 })
       ]);
 
-      setCycles(cyclesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingCycle)));
-      setSales(salesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingSale)));
-      setExpenses(expensesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManufacturingExpense)));
+      setCycles(cyclesData);
+      setSales(salesData);
+      setExpenses(expensesData);
     } catch (error) {
       console.error('Error fetching manufacturing data:', error);
     } finally {
@@ -90,7 +85,7 @@ export const Manufacturing: React.FC = () => {
     if (!user || user.role === 'observer') return;
 
     try {
-      await addDoc(collection(db, 'manufacturing_cycles'), {
+      await apiService.addDoc('manufacturing_cycles', {
         ...cycleFormData,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -104,6 +99,7 @@ export const Manufacturing: React.FC = () => {
         cartonPrice: 0,
         status: 'active'
       });
+      handleRefresh();
     } catch (error) {
       console.error('Error creating cycle:', error);
       alert('حدث خطأ أثناء إضافة الدورة');
@@ -120,7 +116,7 @@ export const Manufacturing: React.FC = () => {
     const totalAmount = saleFormData.cartonsSold * cycle.cartonPrice;
 
     try {
-      await addDoc(collection(db, 'manufacturing_sales'), {
+      await apiService.addDoc('manufacturing_sales', {
         ...saleFormData,
         totalAmount,
         date: new Date().toISOString(),
@@ -133,6 +129,7 @@ export const Manufacturing: React.FC = () => {
         customerPhone: '',
         cartonsSold: 0,
       });
+      handleRefresh();
     } catch (error) {
       console.error('Error creating sale:', error);
       alert('حدث خطأ أثناء إضافة المبيعة');
@@ -144,7 +141,7 @@ export const Manufacturing: React.FC = () => {
     if (!user || user.role === 'observer') return;
 
     try {
-      await addDoc(collection(db, 'manufacturing_expenses'), {
+      await apiService.addDoc('manufacturing_expenses', {
         ...expenseFormData,
         date: new Date().toISOString(),
         recordedBy: user.uid
@@ -155,6 +152,7 @@ export const Manufacturing: React.FC = () => {
         description: '',
         amount: 0,
       });
+      handleRefresh();
     } catch (error) {
       console.error('Error creating expense:', error);
       alert('حدث خطأ أثناء إضافة المنصرف');
@@ -165,7 +163,8 @@ export const Manufacturing: React.FC = () => {
     if (user?.role !== 'admin') return;
     if (window.confirm('هل أنت متأكد أنك تريد حذف هذه المبيعة؟')) {
       try {
-        await deleteDoc(doc(db, 'manufacturing_sales', id));
+        await apiService.deleteDoc('manufacturing_sales', id);
+        handleRefresh();
       } catch (error) {
         console.error('Error deleting sale:', error);
         alert('فشل في حذف المبيعة.');
@@ -177,7 +176,8 @@ export const Manufacturing: React.FC = () => {
     if (user?.role !== 'admin') return;
     if (window.confirm('هل أنت متأكد أنك تريد حذف هذا المنصرف؟')) {
       try {
-        await deleteDoc(doc(db, 'manufacturing_expenses', id));
+        await apiService.deleteDoc('manufacturing_expenses', id);
+        handleRefresh();
       } catch (error) {
         console.error('Error deleting expense:', error);
         alert('فشل في حذف المنصرف.');
@@ -189,10 +189,11 @@ export const Manufacturing: React.FC = () => {
     if (!user || user.role === 'observer') return;
     if (window.confirm('هل أنت متأكد من إكمال هذه الدورة؟')) {
       try {
-        await updateDoc(doc(db, 'manufacturing_cycles', id), {
+        await apiService.updateDoc('manufacturing_cycles', id, {
           status: 'completed',
           updatedAt: new Date().toISOString()
         });
+        handleRefresh();
       } catch (error) {
         console.error('Error updating cycle:', error);
       }
@@ -203,7 +204,8 @@ export const Manufacturing: React.FC = () => {
     if (!user || user.role !== 'admin') return;
     if (window.confirm('هل أنت متأكد من حذف هذه الدورة؟ سيتم حذف جميع المبيعات والمنصرفات المرتبطة بها.')) {
       try {
-        await deleteDoc(doc(db, 'manufacturing_cycles', id));
+        await apiService.deleteDoc('manufacturing_cycles', id);
+        handleRefresh();
         // Note: Ideally, you should also delete related sales and expenses via a Cloud Function or batch delete here.
       } catch (error) {
         console.error('Error deleting cycle:', error);

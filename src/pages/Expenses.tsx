@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, addDoc, query, orderBy, serverTimestamp, getDocs, limit, startAfter, where } from 'firebase/firestore';
-import { db } from '../firebase';
+import { apiService } from '../services/apiService';
 import { Expense } from '../types';
 import { useAuth } from '../AuthContext';
 import { Plus, Receipt, Calendar, Loader2, RefreshCw } from 'lucide-react';
@@ -9,12 +8,12 @@ import { formatCurrency } from '../utils/format';
 import { ExportButtons } from '../components/ExportButtons';
 import { DateRangeFilter } from '../components/DateRangeFilter';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 50;
 
 export const Expenses: React.FC = () => {
   const { user } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -35,34 +34,30 @@ export const Expenses: React.FC = () => {
     setIsLoading(true);
 
     try {
-      let q = query(
-        collection(db, 'expenses'),
-        orderBy('date', 'desc'),
-        limit(PAGE_SIZE)
-      );
-
-      if (isNextPage && lastVisible) {
-        q = query(q, startAfter(lastVisible));
-      }
-
-      const snapshot = await getDocs(q);
-      const newExpenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense));
+      const currentOffset = isNextPage ? offset : 0;
+      const data = await apiService.getCollection<Expense>('expenses', {
+        orderBy: 'date',
+        orderDir: 'desc',
+        limit: PAGE_SIZE,
+        offset: currentOffset
+      });
 
       if (isNextPage) {
-        setExpenses(prev => [...prev, ...newExpenses]);
+        setExpenses(prev => [...prev, ...data]);
+        setOffset(currentOffset + PAGE_SIZE);
       } else {
-        setExpenses(newExpenses);
+        setExpenses(data);
+        setOffset(PAGE_SIZE);
       }
 
-      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
-      setHasMore(snapshot.docs.length === PAGE_SIZE);
+      setHasMore(data.length === PAGE_SIZE);
     } catch (error) {
       console.error('Error fetching expenses:', error);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [lastVisible, isLoading]);
+  }, [offset, isLoading]);
 
   useEffect(() => {
     fetchExpenses();
@@ -70,7 +65,7 @@ export const Expenses: React.FC = () => {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    setLastVisible(null);
+    setOffset(0);
     fetchExpenses(false);
   };
 
@@ -79,16 +74,17 @@ export const Expenses: React.FC = () => {
     if (!user) return;
 
     try {
-      await addDoc(collection(db, 'expenses'), {
+      await apiService.addDoc('expenses', {
         description: formData.description,
         amount: parseFloat(formData.amount),
         category: formData.category,
         date: new Date().toISOString(),
         recordedBy: user.uid,
-        createdAt: serverTimestamp()
+        createdAt: new Date().toISOString()
       });
       setIsModalOpen(false);
       setFormData({ description: '', amount: '', category: 'عام' });
+      handleRefresh();
     } catch (error) {
       console.error('Error adding expense:', error);
       alert('فشل في إضافة المصروف.');

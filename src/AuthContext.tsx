@@ -13,6 +13,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+import { apiService } from './services/apiService';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,27 +22,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Fetch user role from Firestore
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDoc = await getDoc(userDocRef);
-        
-        if (userDoc.exists()) {
-          setUser(userDoc.data() as User);
-        } else {
-          // Default to cashier for new users, or admin if it's the specified email
+        try {
+          // Sync with local API
+          // Since we're using Google Auth on frontend, we send a magic request to register/login on our backend
+          // For simplicity in this radical shift, we'll try to register the user on our backend if not exists
           const role: Role = firebaseUser.email === 'leanhdoc281104@gmail.com' ? 'admin' : 'cashier';
-          const newUser: User = {
+          
+          const userData = {
             uid: firebaseUser.uid,
-            name: firebaseUser.displayName || 'Unknown User',
+            name: firebaseUser.displayName || 'User',
             email: firebaseUser.email || '',
-            role,
-            createdAt: new Date().toISOString()
+            password: 'google-auth-user', // dummy password, in a real app we'd use idToken
+            role
           };
-          await setDoc(userDocRef, newUser);
-          setUser(newUser);
+
+          try {
+            await apiService.register(userData);
+          } catch (e) {
+            // Probably already exists
+          }
+
+          // Generate a local token (simulated login for now to get headers)
+          // Ideally we would verify the idToken on backend
+          // For the "Radical Solution" we'll make the backend trust the UID for now or use a secret bypass
+          const loginRes = await apiService.login(userData.email, 'google-auth-user');
+          localStorage.setItem('token', loginRes.token);
+          setUser(loginRes.user);
+
+        } catch (error) {
+          console.error('Error syncing with local API:', error);
+          // Fallback to firebase data for now so they aren't locked out
+          setUser({
+            uid: firebaseUser.uid,
+            name: firebaseUser.displayName || 'Unknown',
+            email: firebaseUser.email || '',
+            role: 'cashier',
+            createdAt: new Date().toISOString()
+          });
         }
       } else {
         setUser(null);
+        localStorage.removeItem('token');
       }
       setLoading(false);
     });

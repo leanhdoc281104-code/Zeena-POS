@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, query, orderBy, deleteDoc, doc, limit, getDocs, startAfter, where } from 'firebase/firestore';
-import { db } from '../firebase';
+import { apiService } from '../services/apiService';
 import { Sale } from '../types';
 import { Search, Trash2, Eye, Plus, Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../AuthContext';
@@ -9,12 +8,12 @@ import { formatCurrency } from '../utils/format';
 import { ExportButtons } from '../components/ExportButtons';
 import { DateRangeFilter } from '../components/DateRangeFilter';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 50;
 
 export const Sales: React.FC = () => {
   const { user } = useAuth();
   const [sales, setSales] = useState<Sale[]>([]);
-  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -31,34 +30,30 @@ export const Sales: React.FC = () => {
     setIsLoading(true);
 
     try {
-      let q = query(
-        collection(db, 'sales'),
-        orderBy('date', 'desc'),
-        limit(PAGE_SIZE)
-      );
-
-      if (isNextPage && lastVisible) {
-        q = query(q, startAfter(lastVisible));
-      }
-
-      const snapshot = await getDocs(q);
-      const newSales = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
+      const currentOffset = isNextPage ? offset : 0;
+      const data = await apiService.getCollection<Sale>('sales', {
+        orderBy: 'date',
+        orderDir: 'desc',
+        limit: PAGE_SIZE,
+        offset: currentOffset
+      });
 
       if (isNextPage) {
-        setSales(prev => [...prev, ...newSales]);
+        setSales(prev => [...prev, ...data]);
+        setOffset(currentOffset + PAGE_SIZE);
       } else {
-        setSales(newSales);
+        setSales(data);
+        setOffset(PAGE_SIZE);
       }
 
-      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
-      setHasMore(snapshot.docs.length === PAGE_SIZE);
+      setHasMore(data.length === PAGE_SIZE);
     } catch (error) {
       console.error('Error fetching sales:', error);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [lastVisible, isLoading]);
+  }, [offset, isLoading]);
 
   useEffect(() => {
     fetchSales();
@@ -66,7 +61,7 @@ export const Sales: React.FC = () => {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    setLastVisible(null);
+    setOffset(0);
     fetchSales(false);
   };
 
@@ -74,7 +69,7 @@ export const Sales: React.FC = () => {
     if (user?.role !== 'admin') return;
     if (window.confirm('هل أنت متأكد أنك تريد حذف هذه العملية؟')) {
       try {
-        await deleteDoc(doc(db, 'sales', id));
+        await apiService.deleteDoc('sales', id);
         setSales(prev => prev.filter(s => s.id !== id));
       } catch (error) {
         console.error('Error deleting sale:', error);

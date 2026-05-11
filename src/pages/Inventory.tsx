@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, limit, getDocs, startAfter, where } from 'firebase/firestore';
-import { db } from '../firebase';
+import { apiService } from '../services/apiService';
 import { Product } from '../types';
 import { useAuth } from '../AuthContext';
 import { formatCurrency } from '../utils/format';
@@ -10,12 +9,12 @@ import { compressImage } from '../utils/imageUtils';
 import { Toast } from '../components/Toast';
 import { ExportButtons } from '../components/ExportButtons';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 100;
 
 export const Inventory: React.FC = () => {
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
-  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -43,34 +42,29 @@ export const Inventory: React.FC = () => {
     setIsLoading(true);
 
     try {
-      let q = query(
-        collection(db, 'products'),
-        orderBy('name'),
-        limit(PAGE_SIZE)
-      );
-
-      if (isNextPage && lastVisible) {
-        q = query(q, startAfter(lastVisible));
-      }
-
-      const snapshot = await getDocs(q);
-      const newProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      const currentOffset = isNextPage ? offset : 0;
+      const data = await apiService.getCollection<Product>('products', {
+        orderBy: 'name',
+        limit: PAGE_SIZE,
+        offset: currentOffset
+      });
 
       if (isNextPage) {
-        setProducts(prev => [...prev, ...newProducts]);
+        setProducts(prev => [...prev, ...data]);
+        setOffset(currentOffset + PAGE_SIZE);
       } else {
-        setProducts(newProducts);
+        setProducts(data);
+        setOffset(PAGE_SIZE);
       }
 
-      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
-      setHasMore(snapshot.docs.length === PAGE_SIZE);
+      setHasMore(data.length === PAGE_SIZE);
     } catch (error) {
       console.error('Error fetching products:', error);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [lastVisible, isLoading]);
+  }, [offset, isLoading]);
 
   useEffect(() => {
     fetchProducts();
@@ -78,7 +72,7 @@ export const Inventory: React.FC = () => {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    setLastVisible(null);
+    setOffset(0);
     fetchProducts(false);
   };
 
@@ -139,14 +133,15 @@ export const Inventory: React.FC = () => {
 
     try {
       if (editingProduct) {
-        await updateDoc(doc(db, 'products', editingProduct.id), productData);
+        await apiService.updateDoc('products', editingProduct.id, productData);
       } else {
-        await addDoc(collection(db, 'products'), {
+        await apiService.addDoc('products', {
           ...productData,
           createdAt: new Date().toISOString()
         });
       }
       setIsModalOpen(false);
+      handleRefresh();
     } catch (error) {
       console.error('Error saving product:', error);
       setToast({ message: 'فشل في حفظ المنتج.', type: 'error' });
@@ -157,7 +152,8 @@ export const Inventory: React.FC = () => {
     if (user?.role !== 'admin') return;
     if (window.confirm('هل أنت متأكد أنك تريد حذف هذا المنتج؟')) {
       try {
-        await deleteDoc(doc(db, 'products', id));
+        await apiService.deleteDoc('products', id);
+        handleRefresh();
       } catch (error) {
         console.error('Error deleting product:', error);
         setToast({ message: 'فشل في حذف المنتج.', type: 'error' });
