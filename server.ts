@@ -14,6 +14,12 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Request logging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
+
 // Initialize Database
 initDb().then(() => {
   console.log('Database initialized');
@@ -197,13 +203,37 @@ app.put('/api/data/:collection/:id', authenticateToken, async (req, res) => {
     
     const filteredData = await filterFields(collection, data);
     console.log(`Updating ${collection}/${id}:`, Object.keys(filteredData));
+    
+    // Attempt update by ID
     const updated = await db(collection).where({ id }).update(filteredData);
+    
     if (updated === 0) {
+        // Specialty handling for users to resolve UNIQUE constraint errors during migration
+        if (collection === 'users' && filteredData.email) {
+            const existingByEmail = await db('users').where({ email: filteredData.email }).first();
+            if (existingByEmail) {
+                console.log(`Found user by email ${filteredData.email}, updating existing record ${existingByEmail.id} and syncing ID to ${id}`);
+                // Use a direct update to change the ID as well
+                await db('users').where({ id: existingByEmail.id }).update({ ...filteredData, id });
+                return res.json({ success: true, note: 'updated_by_email_and_id_synced' });
+            }
+        }
+
         console.log(`Document ${id} not found in ${collection}, inserting...`);
         try {
             await db(collection).insert({ id, ...filteredData });
-        } catch (e) {
+        } catch (e: any) {
             console.error(`Insert failed for ${collection}/${id}:`, e);
+            // If it's a unique constraint error for email on users table that we missed
+            if (collection === 'users' && e.message?.includes('UNIQUE constraint failed: users.email')) {
+                const retryByEmail = await db('users').where({ email: filteredData.email }).first();
+                if (retryByEmail) {
+                    console.log(`Retry: Syncing ID ${id} for email ${filteredData.email}`);
+                    await db('users').where({ id: retryByEmail.id }).update({ ...filteredData, id });
+                    return res.json({ success: true, note: 'updated_by_email_retry_and_id_synced' });
+                }
+            }
+            throw e; // Re-throw to be caught by the outer catch
         }
     }
     res.json({ success: true });
@@ -302,8 +332,40 @@ app.post('/api/purchases/record', authenticateToken, async (req, res) => {
   }
 });
 
+// --- BACKUP ---
+app.get('/api/backup/export', authenticateToken, async (req: any, res) => {
+  if (req.user.role !== 'admin') return res.sendStatus(403);
+  
+  try {
+    const tables = [
+      'users', 'products', 'categories', 'customers', 'suppliers', 
+      'sales', 'expenses', 'purchases', 'customer_payments', 
+      'supplier_payments', 'debt_logs', 'manufacturing_cycles', 
+      'manufacturing_sales', 'manufacturing_expenses', 'settings'
+    ];
+    
+    const backup: any = {
+      version: '1.0',
+      timestamp: new Date().toISOString(),
+      data: {}
+    };
+    
+    for (const table of tables) {
+      if (await db.schema.hasTable(table)) {
+        backup.data[table] = await db(table).select('*');
+      }
+    }
+    
+    res.json(backup);
+  } catch (error) {
+    console.error('Backup failed:', error);
+    res.status(500).json({ error: 'Failed to generate backup' });
+  }
+});
+
 // Vite Middleware for Dev
 async function startServer() {
+  console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode`);
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

@@ -7,10 +7,55 @@ import { Save, Store, MapPin, Image as ImageIcon, AlertTriangle } from 'lucide-r
 import { compressImage } from '../utils/imageUtils';
 
 import { apiService } from '../services/apiService';
-import { Database, RefreshCw } from 'lucide-react';
+import { Database, RefreshCw, Download, Calendar, History, ShieldCheck } from 'lucide-react';
 
 export const Settings: React.FC = () => {
   const { user } = useAuth();
+  // ... existing state ...
+  const [backingUp, setBackingUp] = useState(false);
+  const [lastBackup, setLastBackup] = useState<string | null>(localStorage.getItem('zeina_last_backup'));
+  const [backupDue, setBackupDue] = useState(false);
+
+  useEffect(() => {
+    if (lastBackup) {
+      const lastDate = new Date(lastBackup);
+      const diffTime = Math.abs(new Date().getTime() - lastDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (diffDays >= 7) {
+        setBackupDue(true);
+      }
+    } else {
+      setBackupDue(true);
+    }
+  }, [lastBackup]);
+
+  const handleExportBackup = async () => {
+    setBackingUp(true);
+    try {
+      const backupData = await apiService.exportBackup();
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `zeina-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      const now = new Date().toISOString();
+      localStorage.setItem('zeina_last_backup', now);
+      setLastBackup(now);
+      setBackupDue(false);
+      alert('تم تحميل النسخة الاحتياطية بنجاح. يرجى الاحتفاظ بها في مكان آمن.');
+    } catch (error) {
+      console.error('Backup download failed:', error);
+      alert('فشل إنشاء النسخة الاحتياطية');
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
   const [settings, setSettings] = useState<StoreSettings>({
     storeName: '',
     storeAddress: '',
@@ -22,17 +67,16 @@ export const Settings: React.FC = () => {
   const [migrating, setMigrating] = useState(false);
   const [migrationStatus, setMigrationStatus] = useState<{current: string, total: number, done: number} | null>(null);
 
-  // ... (existing code and handleClearData)
-
-  const [status, setStatus] = useState<{status: string, db: string} | null>(null);
+  const [status, setStatus] = useState<{status: string, db: string, error?: string | null} | null>(null);
 
   useEffect(() => {
     const checkStatus = async () => {
       try {
         const s = await apiService.getStatus();
-        setStatus(s);
-      } catch (e) {
+        setStatus({ ...s, error: null });
+      } catch (e: any) {
         console.error('Status check failed', e);
+        setStatus({ status: 'error', db: 'unknown', error: e.message || String(e) });
       }
     };
     checkStatus();
@@ -387,8 +431,10 @@ export const Settings: React.FC = () => {
                 تجاوز حدود Firebase (هجرة البيانات)
               </div>
               <div className="flex flex-col items-end gap-1">
-                {status ? (
+                {status?.status === 'ok' ? (
                   <span className="text-[10px] font-normal px-2 py-0.5 bg-green-500 text-white rounded-full">السيرفر: {status.db}</span>
+                ) : status?.error ? (
+                  <span className="text-[10px] font-normal px-2 py-0.5 bg-red-500 text-white rounded-full" title={status.error}>خطأ: {status.error.substring(0, 20)}</span>
                 ) : (
                   <span className="text-[10px] font-normal px-2 py-0.5 bg-red-500 text-white rounded-full">السيرفر غير متصل</span>
                 )}
@@ -491,6 +537,70 @@ export const Settings: React.FC = () => {
             <p className="text-xs text-blue-500 mt-3 text-center">
               ملاحظة: هذا الإجراء لا يمسح بيانات Firebase الأصلية، بل ينسخها فقط.
             </p>
+          </div>
+        </div>
+      )}
+
+      {user?.role === 'admin' && (
+        <div className="mt-8 bg-green-50 rounded-2xl shadow-sm border border-green-100 overflow-hidden">
+          <div className="p-6 border-b border-green-100 bg-green-100/50 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-green-800 flex items-center gap-2">
+                <ShieldCheck className="w-6 h-6" />
+                النسخ الاحتياطي (الأمان)
+              </h2>
+              <p className="text-green-600 mt-1">احتفظ بنسخة من بياناتك خارج النظام لضمان عدم ضياعها تحت أي ظرف.</p>
+            </div>
+            {lastBackup && (
+              <div className="text-left">
+                <span className="text-[10px] text-green-700 bg-green-200 px-2 py-1 rounded-full font-mono">
+                  آخر نسخة: {new Date(lastBackup).toLocaleDateString('ar-EG')}
+                </span>
+              </div>
+            )}
+          </div>
+          <div className="p-6 space-y-4">
+            {backupDue && (
+              <div className="flex items-start gap-3 p-4 bg-orange-50 border border-orange-200 rounded-xl text-orange-800">
+                <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-bold">تذكير بالنسخ الاحتياطي الأسبوعي</p>
+                  <p className="text-xs mt-1">لقد مر أكثر من أسبوع منذ آخر نسخة احتياطية. ننصحك بتحميل نسخة الآن.</p>
+                </div>
+              </div>
+            )}
+            
+            <button
+              onClick={handleExportBackup}
+              disabled={backingUp}
+              className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg transition-all active:scale-95 group"
+            >
+              {backingUp ? (
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+              ) : (
+                <>
+                  <Download className="w-6 h-6 group-hover:bounce transition-transform" />
+                  تحميل نسخة احتياطية (JSON)
+                </>
+              )}
+            </button>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 bg-white border border-green-100 rounded-xl flex items-center gap-3">
+                <History className="w-8 h-8 text-green-300" />
+                <div>
+                  <p className="text-[10px] text-gray-500">الحالة</p>
+                  <p className="text-xs font-bold text-green-700">{lastBackup ? 'مؤمن' : 'لم يتم النسخ بعد'}</p>
+                </div>
+              </div>
+              <div className="p-3 bg-white border border-green-100 rounded-xl flex items-center gap-3">
+                <Calendar className="w-8 h-8 text-green-300" />
+                <div>
+                  <p className="text-[10px] text-gray-500">التوصية</p>
+                  <p className="text-xs font-bold text-green-700">كل 7 أيام</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

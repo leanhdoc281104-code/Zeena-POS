@@ -102,4 +102,12 @@ export const apiService = {
     if (!res.ok) throw new Error('Status check failed');
     return res.json();
   },
+
+  async exportBackup(): Promise<any> {
+    const res = await fetch(`${API_BASE}/backup/export`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('Backup failed');
+    return res.json();
+  },
 };
