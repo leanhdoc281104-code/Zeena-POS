@@ -92,10 +92,14 @@ export const POS: React.FC = () => {
         setProducts(data);
         setHasMore(data.length === 100);
         
-        sessionStorage.setItem('pos_initial_products', JSON.stringify({
-          data,
-          timestamp: new Date().getTime()
-        }));
+        try {
+          sessionStorage.setItem('pos_initial_products', JSON.stringify({
+            data,
+            timestamp: new Date().getTime()
+          }));
+        } catch (e) {
+          console.warn('Could not cache products in sessionStorage:', e);
+        }
       } catch (error: any) {
         console.error('Error loading initial products:', error);
       }
@@ -118,10 +122,14 @@ export const POS: React.FC = () => {
         const data = await apiService.getCollection<Customer>('customers', { orderBy: 'name', limit: 500 });
         setCustomers(data);
         
-        sessionStorage.setItem('pos_customers', JSON.stringify({
-          data,
-          timestamp: new Date().getTime()
-        }));
+        try {
+          sessionStorage.setItem('pos_customers', JSON.stringify({
+            data,
+            timestamp: new Date().getTime()
+          }));
+        } catch (e) {
+          console.warn('Could not cache customers in sessionStorage:', e);
+        }
       } catch (error: any) {
         console.error('Error loading customers:', error);
       }
@@ -342,7 +350,7 @@ export const POS: React.FC = () => {
         discount,
         paymentMethod,
         date: new Date().toISOString(),
-        cashierId: user?.uid,
+        cashierId: user?.id,
         customerId: selectedCustomer || null,
         createdAt: new Date().toISOString()
       };

@@ -11,7 +11,8 @@ const PORT = 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'zeina-pos-secret-key-123';
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Initialize Database
 initDb().then(() => {
@@ -35,13 +36,33 @@ const authenticateToken = (req: any, res: any, next: any) => {
 };
 
 // --- AUTH ROUTES ---
+app.get('/api/status', async (req, res) => {
+  try {
+    const hasUsers = await db.schema.hasTable('users');
+    res.json({ status: 'ok', db: hasUsers ? 'ready' : 'not_ready' });
+  } catch (e) {
+    res.status(500).json({ status: 'error', error: String(e) });
+  }
+});
+
 app.post('/api/auth/register', async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const { uid, name, email, password, role } = req.body;
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    const uid = Math.random().toString(36).substring(2, 15);
+    const finalId = uid || Math.random().toString(36).substring(2, 15);
+    
+    const existing = await db('users').where({ email }).first();
+    if (existing) {
+      await db('users').where({ email }).update({
+        name,
+        password: hashedPassword, // Sync password too
+        role: role || existing.role
+      });
+      return res.json({ message: 'User updated' });
+    }
+
     await db('users').insert({
-      uid,
+      id: finalId,
       name,
       email,
       password: hashedPassword,
@@ -49,7 +70,8 @@ app.post('/api/auth/register', async (req, res) => {
     });
     res.status(201).json({ message: 'User created' });
   } catch (error) {
-    res.status(500).json({ error: 'User already exists or server error' });
+    console.error('Register error:', error);
+    res.status(500).json({ error: 'Server error during registration' });
   }
 });
 
@@ -58,17 +80,42 @@ app.post('/api/auth/login', async (req, res) => {
   const user = await db('users').where({ email }).first();
 
   if (user && await bcrypt.compare(password, user.password)) {
-    const token = jwt.sign({ uid: user.uid, role: user.role, name: user.name }, JWT_SECRET);
-    res.json({ token, user: { uid: user.uid, name: user.name, role: user.role, email: user.email } });
+    const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, JWT_SECRET);
+    res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email } });
   } else {
     res.status(401).json({ error: 'Invalid credentials' });
   }
 });
 
+// --- UTILS ---
+const columnCache: Record<string, string[]> = {};
+
+const filterFields = async (tableName: string, data: any) => {
+  if (tableName === 'settings') return data;
+  try {
+    if (!columnCache[tableName]) {
+      const columns = await db(tableName).columnInfo();
+      columnCache[tableName] = Object.keys(columns);
+    }
+    
+    const allowedKeys = columnCache[tableName];
+    const filtered: any = {};
+    for (const key of allowedKeys) {
+      if (data[key] !== undefined) {
+        filtered[key] = data[key];
+      }
+    }
+    return filtered;
+  } catch (e) {
+    console.error(`Filter fields failed for ${tableName}:`, e);
+    return data; 
+  }
+};
+
 // --- GENERIC DATA ROUTES (Firestore-like) ---
 app.get('/api/data/:collection', authenticateToken, async (req, res) => {
   const { collection } = req.params;
-  const { limit: colLimit, orderBy, orderDir, whereField, whereValue, whereOp } = req.query;
+  const { limit: colLimit, offset, orderBy, orderDir, whereField, whereValue, whereOp } = req.query;
 
   try {
     let query = db(collection);
@@ -82,7 +129,11 @@ app.get('/api/data/:collection', authenticateToken, async (req, res) => {
       query = query.orderBy(orderBy as string, (orderDir as string) || 'asc');
     }
 
-    if (colLimit) {
+    if (offset && !isNaN(parseInt(offset as string))) {
+      query = query.offset(parseInt(offset as string));
+    }
+
+    if (colLimit && !isNaN(parseInt(colLimit as string))) {
       query = query.limit(parseInt(colLimit as string));
     }
 
@@ -105,7 +156,7 @@ app.get('/api/data/:collection', authenticateToken, async (req, res) => {
 
 app.post('/api/data/:collection', authenticateToken, async (req, res) => {
   const { collection } = req.params;
-  const data = { ...req.body };
+  let data = { ...req.body };
 
   // Stringify JSON fields
   if (data.items) data.items = JSON.stringify(data.items);
@@ -114,16 +165,18 @@ app.post('/api/data/:collection', authenticateToken, async (req, res) => {
 
   try {
     if (!data.id) data.id = Math.random().toString(36).substring(2, 15);
-    await db(collection).insert(data);
+    const filteredData = await filterFields(collection, data);
+    await db(collection).insert(filteredData);
     res.status(201).json({ id: data.id });
   } catch (error) {
+    console.error('Post data error:', error);
     res.status(500).json({ error: 'Failed to save data' });
   }
 });
 
 app.put('/api/data/:collection/:id', authenticateToken, async (req, res) => {
   const { collection, id } = req.params;
-  const data = { ...req.body };
+  let data = { ...req.body };
 
   if (data.items) data.items = JSON.stringify(data.items);
   if (data.materials) data.materials = JSON.stringify(data.materials);
@@ -131,9 +184,31 @@ app.put('/api/data/:collection/:id', authenticateToken, async (req, res) => {
   if (data.id) delete data.id;
 
   try {
-    await db(collection).where({ id }).update(data);
+    if (collection === 'settings') {
+        const value = JSON.stringify(data);
+        const existing = await db('settings').where({ id }).first();
+        if (existing) {
+            await db('settings').where({ id }).update({ value });
+        } else {
+            await db('settings').insert({ id, value });
+        }
+        return res.json({ success: true });
+    }
+    
+    const filteredData = await filterFields(collection, data);
+    console.log(`Updating ${collection}/${id}:`, Object.keys(filteredData));
+    const updated = await db(collection).where({ id }).update(filteredData);
+    if (updated === 0) {
+        console.log(`Document ${id} not found in ${collection}, inserting...`);
+        try {
+            await db(collection).insert({ id, ...filteredData });
+        } catch (e) {
+            console.error(`Insert failed for ${collection}/${id}:`, e);
+        }
+    }
     res.json({ success: true });
   } catch (error) {
+    console.error('Update data error:', error);
     res.status(500).json({ error: 'Failed to update data' });
   }
 });
@@ -154,10 +229,15 @@ app.get('/api/doc/:collection/:id', authenticateToken, async (req, res) => {
     try {
         const data = await db(collection).where({ id }).first();
         if (data && data.value && collection === 'settings') {
-            return res.json(JSON.parse(data.value));
+            try {
+                return res.json(JSON.parse(data.value));
+            } catch (e) {
+                return res.json({});
+            }
         }
-        res.json(data);
+        res.json(data || null);
     } catch (error) {
+        console.error('Fetch doc error:', error);
         res.status(500).json({ error: 'Failed' });
     }
 });

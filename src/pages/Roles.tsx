@@ -8,6 +8,7 @@ import { User } from '../types';
 import { useAuth } from '../AuthContext';
 import { Plus, Trash2, Mail, Shield, User as UserIcon, Key, RefreshCw, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import { apiService } from '../services/apiService';
 
 export const Roles: React.FC = () => {
   const { user: currentUser } = useAuth();
@@ -28,8 +29,8 @@ export const Roles: React.FC = () => {
     if (isLoading) return;
     setIsLoading(true);
     try {
-      const snapshot = await getDocs(collection(db, 'users'));
-      setUsers(snapshot.docs.map(doc => doc.data() as User));
+      const data = await apiService.getCollection<User>('users');
+      setUsers(data);
     } catch (error) {
       console.error('Error fetching users:', error);
     } finally {
@@ -52,31 +53,38 @@ export const Roles: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      // Initialize secondary app to create user without logging out the current admin
       const secondaryApp = getApps().find(app => app.name === 'SecondaryApp') || initializeApp(firebaseConfig, "SecondaryApp");
       const secondaryAuth = getAuth(secondaryApp);
 
-      // Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(
         secondaryAuth, 
         formData.email, 
         formData.password
       );
-      const newUid = userCredential.user.uid;
+      const newId = userCredential.user.uid;
 
-      // Save user data to Firestore using the primary app (which has admin privileges)
-      await setDoc(doc(db, 'users', newUid), {
-        uid: newUid,
+      await apiService.register({
+        id: newId,
         name: formData.name,
         email: formData.email,
-        role: formData.role,
-        createdAt: new Date().toISOString()
+        password: formData.password,
+        role: formData.role
       });
 
-      // Sign out and clean up secondary app
+      try {
+        await setDoc(doc(db, 'users', newId), {
+          id: newId,
+          name: formData.name,
+          email: formData.email,
+          role: formData.role,
+          createdAt: new Date().toISOString()
+        });
+      } catch (e) {
+        console.error('Firebase backup failed', e);
+      }
+
       await signOut(secondaryAuth);
 
-      // Send email via mailto
       const subject = encodeURIComponent('تم إنشاء حسابك في نظام زينة');
       const body = encodeURIComponent(
         `مرحباً ${formData.name}،\n\n` +
@@ -93,22 +101,21 @@ export const Roles: React.FC = () => {
       alert('تم إنشاء الحساب بنجاح');
       setIsModalOpen(false);
       setFormData({ name: '', email: '', password: '', role: 'cashier' });
+      fetchUsers();
     } catch (error: any) {
       console.error('Error creating user:', error);
-      if (error.code === 'auth/operation-not-allowed') {
-        alert('عذراً، ميزة تسجيل الدخول بالبريد الإلكتروني غير مفعلة.\n\nيرجى الذهاب إلى لوحة تحكم Firebase -> Authentication -> Sign-in method وتفعيل Email/Password.');
-      } else {
-        alert(error.message || 'حدث خطأ أثناء إنشاء الحساب');
-      }
+      alert(error.message || 'حدث خطأ أثناء إنشاء الحساب');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDelete = async (uid: string) => {
-    if (window.confirm('هل أنت متأكد من حذف هذا الحساب؟ (سيتم حذفه من قاعدة البيانات فقط)')) {
+  const handleDelete = async (id: string) => {
+    if (window.confirm('هل أنت متأكد من حذف هذا الحساب؟')) {
       try {
-        await deleteDoc(doc(db, 'users', uid));
+        await apiService.deleteDoc('users', id);
+        try { await deleteDoc(doc(db, 'users', id)); } catch(e) {}
+        fetchUsers();
       } catch (error) {
         console.error('Error deleting user:', error);
         alert('حدث خطأ أثناء الحذف');
@@ -147,14 +154,6 @@ export const Roles: React.FC = () => {
         </div>
       </div>
 
-      {/* Print Header */}
-      <div className="hidden print:block text-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">تقرير الأدوار والحسابات</h1>
-        <p className="text-gray-600">
-          تاريخ الطباعة: {format(new Date(), 'yyyy/MM/dd')}
-        </p>
-      </div>
-
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden print:border-none print:shadow-none">
         <div className="overflow-x-auto print:overflow-visible">
           <table className="w-full text-right border-collapse">
@@ -171,11 +170,11 @@ export const Roles: React.FC = () => {
             </thead>
             <tbody>
               {users.map((user) => (
-                <tr key={user.uid} className="hover:bg-gray-50 transition-colors print:hover:bg-transparent">
+                <tr key={user.id} className="hover:bg-gray-50 transition-colors print:hover:bg-transparent">
                   <td className="p-4 border-b border-gray-100 print:border-black">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center text-pink-600 font-bold print:hidden">
-                        {user.name.charAt(0)}
+                        {user.name?.charAt(0) || '?'}
                       </div>
                       <span className="font-medium text-gray-900 print:text-black">{user.name}</span>
                     </div>
@@ -195,7 +194,7 @@ export const Roles: React.FC = () => {
                   {currentUser?.role === 'admin' && (
                     <td className="p-4 border-b border-gray-100 text-center print:hidden">
                       <button
-                        onClick={() => handleDelete(user.uid)}
+                        onClick={() => handleDelete(user.id)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="حذف"
                       >
@@ -205,7 +204,7 @@ export const Roles: React.FC = () => {
                   )}
                 </tr>
               ))}
-              {users.length === 0 && (
+              {users.length === 0 && !isLoading && (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-gray-500">
                     لا توجد حسابات مسجلة
@@ -217,7 +216,6 @@ export const Roles: React.FC = () => {
         </div>
       </div>
 
-      {/* Add User Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">

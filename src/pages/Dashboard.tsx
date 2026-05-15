@@ -85,6 +85,15 @@ export const Dashboard: React.FC = () => {
       const startISO = start.toISOString();
       const endISO = end.toISOString();
 
+      const fetchWithFallback = async <T extends unknown>(name: string, promise: Promise<T[]>): Promise<T[]> => {
+        try {
+          return await promise;
+        } catch (e) {
+          console.error(`Failed to fetch ${name}:`, e);
+          return [];
+        }
+      };
+
       const [
         salesSnap,
         expensesSnap,
@@ -94,13 +103,13 @@ export const Dashboard: React.FC = () => {
         mfgSalesSnap,
         mfgExpensesSnap
       ] = await Promise.all([
-        apiService.getCollection<Sale>('sales', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 1000 }),
-        apiService.getCollection<Expense>('expenses', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 1000 }),
-        apiService.getCollection<Purchase>('purchases', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 1000 }),
-        apiService.getCollection<Product>('products', { limit: 500 }),
-        apiService.getCollection<ManufacturingCycle>('manufacturing_cycles', { whereField: 'startDate', whereValue: endISO, whereOp: '<=', limit: 500 }),
-        apiService.getCollection<ManufacturingSale>('manufacturing_sales', { whereField: 'date', whereValue: startISO, whereOp: '>=', limit: 500 }),
-        apiService.getCollection<ManufacturingExpense>('manufacturing_expenses', { whereField: 'date', whereValue: startISO, whereOp: '>=', limit: 500 })
+        fetchWithFallback('sales', apiService.getCollection<Sale>('sales', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 1000 })),
+        fetchWithFallback('expenses', apiService.getCollection<Expense>('expenses', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 1000 })),
+        fetchWithFallback('purchases', apiService.getCollection<Purchase>('purchases', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 1000 })),
+        fetchWithFallback('products', apiService.getCollection<Product>('products', { limit: 500 })),
+        fetchWithFallback('manufacturing_cycles', apiService.getCollection<ManufacturingCycle>('manufacturing_cycles', { whereField: 'startDate', whereValue: endISO, whereOp: '<=', limit: 500 })),
+        fetchWithFallback('manufacturing_sales', apiService.getCollection<ManufacturingSale>('manufacturing_sales', { whereField: 'date', whereValue: startISO, whereOp: '>=', limit: 500 })),
+        fetchWithFallback('manufacturing_expenses', apiService.getCollection<ManufacturingExpense>('manufacturing_expenses', { whereField: 'date', whereValue: startISO, whereOp: '>=', limit: 500 }))
       ]);
 
       const freshData = {
@@ -122,7 +131,11 @@ export const Dashboard: React.FC = () => {
       setMfgSales(freshData.mfgSales);
       setMfgExpenses(freshData.mfgExpenses);
       
-      sessionStorage.setItem(cacheKey, JSON.stringify(freshData));
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify(freshData));
+      } catch (e) {
+        console.warn('Dashboard data too large for sessionStorage:', e);
+      }
       setLastRefreshed(new Date());
       setErrorStatus(null);
     } catch (error: any) {

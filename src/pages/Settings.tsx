@@ -20,15 +20,44 @@ export const Settings: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [migrating, setMigrating] = useState(false);
+  const [migrationStatus, setMigrationStatus] = useState<{current: string, total: number, done: number} | null>(null);
 
   // ... (existing code and handleClearData)
 
-  const handleMigrateToLocal = async () => {
-    if (user?.role !== 'admin') return;
-    if (!window.confirm('سيقوم هذا الإجراء بنسخ كافة البيانات من Firebase إلى قاعدة البيانات المحلية الجديدة. هل تود الاستمرار؟')) return;
+  const [status, setStatus] = useState<{status: string, db: string} | null>(null);
 
-    setMigrating(true);
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const s = await apiService.getStatus();
+        setStatus(s);
+      } catch (e) {
+        console.error('Status check failed', e);
+      }
+    };
+    checkStatus();
+  }, []);
+
+  const [showConfirmMigrate, setShowConfirmMigrate] = useState(false);
+
+  const handleMigrateToLocal = async () => {
+    setShowConfirmMigrate(false);
     try {
+      console.log('Migration process triggered. User:', user?.email);
+      
+      if (!user) {
+        alert('حدث خطأ: لا توجد بيانات للمستخدم الحالي. يرجى تسجيل الخروج والدخول مرة أخرى.');
+        return;
+      }
+      
+      if (user.role !== 'admin') {
+        alert('عذراً، هذه الميزة متاحة فقط للمديرين.');
+        return;
+      }
+
+      setMigrating(true);
+      setMigrationStatus({ current: 'جاري البدء والتحقق من الاتصال...', total: 0, done: 0 });
+      
       const collectionsToMigrate = [
         'users',
         'products',
@@ -42,36 +71,100 @@ export const Settings: React.FC = () => {
       ];
 
       for (const colName of collectionsToMigrate) {
-        const querySnapshot = await getDocs(collection(db, colName));
-        console.log(`Migrating ${colName}: ${querySnapshot.size} docs`);
+        setMigrationStatus(prev => ({ 
+          current: `جاري تحميل بيانات ${colName} من Firebase...`, 
+          total: prev?.total || 0, 
+          done: prev?.done || 0 
+        }));
         
+        let querySnapshot;
+        try {
+          querySnapshot = await getDocs(collection(db, colName));
+        } catch (e: any) {
+          console.error(`Firebase error fetching ${colName}:`, e);
+          if (e.message?.includes('quota')) {
+            alert(`فشل تحميل ${colName}: تم تجاوز حدود Firebase المجانية. يرجى الانتظار حتى الغد أو الترقية.`);
+            throw e;
+          }
+          continue; // Try next collection
+        }
+
+        const totalDocs = querySnapshot.size;
+        let count = 0;
+        
+        setMigrationStatus({ current: `جاري نقل ${colName} (${totalDocs} مستند)...`, total: totalDocs, done: 0 });
+
         for (const document of querySnapshot.docs) {
-          const data = document.id ? { id: document.id, ...document.data() } : document.data();
-          try {
-            await apiService.addDoc(colName, data);
-          } catch (e) {
-            // Already exists or other error, try update
+          let retryCount = 3;
+          while (retryCount > 0) {
             try {
+              const rowData = document.data();
+              // Sanitize Firestore values (like Timestamps)
+              Object.keys(rowData).forEach(key => {
+                const val = rowData[key];
+                if (val && typeof val === 'object') {
+                  if (val.seconds !== undefined) {
+                    rowData[key] = new Date(val.seconds * 1000).toISOString();
+                  } else if (val.toDate && typeof val.toDate === 'function') {
+                    rowData[key] = val.toDate().toISOString();
+                  }
+                }
+              });
+
+              const data = { ...rowData, id: document.id };
               await apiService.updateDoc(colName, document.id, data);
-            } catch (innerE) {
-              console.error(`Failed to migrate doc ${document.id} in ${colName}`);
+              count++;
+              setMigrationStatus(prev => ({ 
+                current: `جاري معالجة ${colName}...`, 
+                total: totalDocs, 
+                done: count 
+              }));
+              
+              // Small delay every 10 docs to prevent congestion
+              if (count % 10 === 0) {
+                await new Promise(r => setTimeout(r, 50));
+              }
+              break; // Success, exit retry loop
+            } catch (e: any) {
+              console.error(`Attempt ${4 - retryCount} failed for doc ${document.id} in ${colName}:`, e);
+              retryCount--;
+              if (retryCount > 0) {
+                await new Promise(r => setTimeout(r, 500)); // Wait before retry
+              } else {
+                console.error(`Final failure for doc ${document.id} in ${colName}`);
+              }
             }
           }
         }
       }
 
-      // Migrate settings
-      const settingsSnap = await getDoc(doc(db, 'settings', 'store'));
-      if (settingsSnap.exists()) {
-        await apiService.addDoc('settings', { key: 'store', value: JSON.stringify(settingsSnap.data()) });
+      // Migrate settings separately as they might be different structure
+      setMigrationStatus({ current: 'جاري نقل الإعدادات النهائية...', total: 2, done: 0 });
+      try {
+        const settingsSnap = await getDoc(doc(db, 'settings', 'store'));
+        if (settingsSnap.exists()) {
+          await apiService.updateDoc('settings', 'store', settingsSnap.data());
+        }
+        setMigrationStatus(prev => ({ ...prev!, done: 1 }));
+        
+        const partnershipSnap = await getDoc(doc(db, 'settings', 'partnership'));
+        if (partnershipSnap.exists()) {
+          await apiService.updateDoc('settings', 'partnership', partnershipSnap.data());
+        }
+        setMigrationStatus(prev => ({ ...prev!, done: 2 }));
+      } catch (e) {
+        console.error('Settings migration failed:', e);
       }
 
-      alert('تمت الهجرة بنجاح! يمكنك الآن الاعتماد على قاعدة البيانات المحلية.');
-    } catch (error) {
+      setMigrationStatus(null);
+      alert('تمت عملية نقل البيانات بنجاح تام! يمكنك الآن العمل بشكل أسرع دون قيود.');
+      window.location.reload(); // Reload to pick up all new local data
+    } catch (error: any) {
       console.error('Migration error:', error);
-      alert('حدث خطأ أثناء الهجرة. تأكد من أن السيرفر يعمل.');
+      alert('حدث خطأ غير متوقع أثناء الهجرة: ' + (error.message || 'فشل الاتصال'));
     } finally {
       setMigrating(false);
+      setMigrationStatus(null);
     }
   };
 
@@ -288,29 +381,113 @@ export const Settings: React.FC = () => {
       {user?.role === 'admin' && (
         <div className="mt-8 bg-blue-50 rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
           <div className="p-6 border-b border-blue-100 bg-blue-100/50">
-            <h2 className="text-xl font-bold text-blue-800 flex items-center gap-2">
-              <Database className="w-6 h-6" />
-              تجاوز حدود Firebase (هجرة البيانات)
+            <h2 className="text-xl font-bold text-blue-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Database className="w-6 h-6" />
+                تجاوز حدود Firebase (هجرة البيانات)
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                {status ? (
+                  <span className="text-[10px] font-normal px-2 py-0.5 bg-green-500 text-white rounded-full">السيرفر: {status.db}</span>
+                ) : (
+                  <span className="text-[10px] font-normal px-2 py-0.5 bg-red-500 text-white rounded-full">السيرفر غير متصل</span>
+                )}
+                <span className="text-[10px] font-normal px-2 py-0.5 bg-blue-500 text-white rounded-full">صلاحيتك: {user?.role}</span>
+              </div>
             </h2>
             <p className="text-blue-600 mt-1">
               انقل بياناتك إلى الاستضافة المحلية (Hostinger) للتخلص من مشاكل حدود القراءة اليومية نهائياً.
             </p>
           </div>
           <div className="p-6">
-            <button
-              onClick={handleMigrateToLocal}
-              disabled={migrating}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors disabled:opacity-70"
-            >
-              {migrating ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-              ) : (
-                <>
-                  <RefreshCw className="w-5 h-5" />
-                  بدء هجرة البيانات إلى SQLite
-                </>
-              )}
-            </button>
+            {(() => {
+              if (migrating) {
+                return (
+                  <div className="animate-pulse flex items-center justify-center gap-3 py-4 px-4 bg-blue-100 text-blue-700 rounded-xl font-bold border border-blue-200">
+                    <RefreshCw className="w-6 h-6 animate-spin" />
+                    جاري نقل البيانات الآن... ({migrationStatus?.done || 0} / {migrationStatus?.total || 0})
+                  </div>
+                );
+              }
+              
+              if (showConfirmMigrate) {
+                return (
+                  <div className="bg-white border-2 border-blue-600 rounded-xl p-5 space-y-4 shadow-xl transform transition-all duration-300 scale-100">
+                    <div className="flex items-center gap-3 text-blue-800 font-bold text-lg mb-2">
+                      <AlertTriangle className="w-7 h-7 text-blue-600" />
+                      تأكيد النقل النهائي للقاعدة المحلية
+                    </div>
+                    <p className="text-sm font-medium text-gray-700 leading-relaxed">
+                      سيتم نسخ جميع بياناتك (المنتجات، المبيعات، العملاء، الخ) من Firebase إلى SQLite المحلي. 
+                      هذا الإجراء آمن ولا يحذف بياناتك الأصلية. هل تود المتابعة؟
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          console.log('Final migration confirmation clicked');
+                          handleMigrateToLocal();
+                        }}
+                        className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-xl text-sm font-bold hover:bg-blue-700 shadow-md active:scale-95 transition-all text-center"
+                      >
+                        نعم، ابدأ نقل البيانات الآن
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          console.log('Migration cancelled');
+                          setShowConfirmMigrate(false);
+                        }}
+                        className="flex-1 bg-gray-100 text-gray-600 py-3 px-6 rounded-xl text-sm font-medium hover:bg-gray-200 transition-all text-center"
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    console.log('Migration initial trigger clicked. User role:', user?.role);
+                    if (user?.role !== 'admin') {
+                      alert('عذراً، صلاحياتك الحالية هي (' + (user?.role || 'غير معروف') + ') بينما الهجرة تتطلب صلاحية مدير (admin).');
+                      return;
+                    }
+                    setShowConfirmMigrate(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg transition-all active:scale-95 group"
+                >
+                  <RefreshCw className="w-6 h-6 group-hover:rotate-180 transition-transform duration-700" />
+                  <span className="text-lg">بدء هجرة البيانات إلى SQLite</span>
+                </button>
+              );
+            })()}
+            
+            {migrationStatus && (
+              <div className="mt-4 p-4 bg-white rounded-xl border border-blue-200 shadow-sm">
+                <p className="text-sm font-medium text-blue-800 mb-2">{migrationStatus.current}</p>
+                {migrationStatus.total > 0 && (
+                  <div className="space-y-1">
+                    <div className="w-full bg-blue-100 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                        style={{ width: `${(migrationStatus.done / migrationStatus.total) * 100}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[10px] text-blue-500 font-mono">
+                      <span>{migrationStatus.done} من {migrationStatus.total}</span>
+                      <span>{Math.round((migrationStatus.done / migrationStatus.total) * 100)}%</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <p className="text-xs text-blue-500 mt-3 text-center">
               ملاحظة: هذا الإجراء لا يمسح بيانات Firebase الأصلية، بل ينسخها فقط.
             </p>

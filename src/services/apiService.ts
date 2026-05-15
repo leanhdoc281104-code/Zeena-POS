@@ -94,5 +94,12 @@ export const apiService = {
     });
     if (!res.ok) throw new Error('Purchase record failed');
     return res.json();
-  }
+  },
+
+  // --- SYSTEM ---
+  async getStatus(): Promise<{ status: string, db: string }> {
+    const res = await fetch(`${API_BASE}/status`);
+    if (!res.ok) throw new Error('Status check failed');
+    return res.json();
+  },
 };

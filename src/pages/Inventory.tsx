@@ -234,6 +234,17 @@ export const Inventory: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
+              {filteredProducts.length === 0 && !isLoading && (
+                <tr>
+                  <td colSpan={6} className="p-12 text-center">
+                    <div className="flex flex-col items-center justify-center text-gray-500">
+                      <Package className="w-12 h-12 mb-4 opacity-20" />
+                      <p className="text-lg font-medium">لم يتم العثور على منتجات</p>
+                      <p className="text-sm">أضف منتجات جديدة أو قم باستيراد البيانات من صفحة الإعدادات</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
               {filteredProducts.map(product => (
                 <tr key={product.id} className="hover:bg-gray-50 transition-colors print:hover:bg-transparent">
                   <td className="p-4 print:border-b print:border-black">

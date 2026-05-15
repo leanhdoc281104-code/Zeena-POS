@@ -12,13 +12,27 @@ const db = knex({
 export async function initDb() {
   if (!(await db.schema.hasTable('users'))) {
     await db.schema.createTable('users', (table) => {
-      table.string('uid').primary();
+      table.string('id').primary();
       table.string('name');
       table.string('email').unique();
       table.string('password'); // Added for local auth
       table.string('role');
       table.timestamp('createdAt').defaultTo(db.fn.now());
     });
+  } else {
+    // Migration: ensure 'id' column exists. If 'uid' exists, rename it to 'id'
+    const hasId = await db.schema.hasColumn('users', 'id');
+    const hasUid = await db.schema.hasColumn('users', 'uid');
+    
+    if (!hasId && hasUid) {
+      await db.schema.alterTable('users', (table) => {
+        table.renameColumn('uid', 'id');
+      });
+    } else if (!hasId) {
+      await db.schema.alterTable('users', (table) => {
+        table.string('id').primary();
+      });
+    }
   }
 
   if (!(await db.schema.hasTable('products'))) {
@@ -85,8 +99,8 @@ export async function initDb() {
       table.string('name');
       table.string('phone');
       table.float('debtBalance').defaultTo(0);
-      table.string('createdAt');
-      table.string('updatedAt');
+      table.timestamp('createdAt').defaultTo(db.fn.now());
+      table.timestamp('updatedAt').defaultTo(db.fn.now());
     });
   }
 
@@ -107,9 +121,17 @@ export async function initDb() {
       table.integer('cartonsProduced');
       table.float('cartonPrice');
       table.string('status');
-      table.string('createdAt');
-      table.string('updatedAt');
+      table.string('startDate');
+      table.timestamp('createdAt').defaultTo(db.fn.now());
+      table.timestamp('updatedAt').defaultTo(db.fn.now());
     });
+  } else {
+    const hasStartDate = await db.schema.hasColumn('manufacturing_cycles', 'startDate');
+    if (!hasStartDate) {
+      await db.schema.alterTable('manufacturing_cycles', (table) => {
+        table.string('startDate');
+      });
+    }
   }
 
   if (!(await db.schema.hasTable('manufacturing_sales'))) {

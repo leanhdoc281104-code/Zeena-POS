@@ -137,7 +137,7 @@ export const Purchases: React.FC = () => {
         total,
         supplierName,
         date: new Date().toISOString(),
-        recordedBy: user.uid,
+        recordedBy: user.id,
         createdAt: new Date().toISOString()
       };
 

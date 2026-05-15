@@ -79,7 +79,7 @@ export const Expenses: React.FC = () => {
         amount: parseFloat(formData.amount),
         category: formData.category,
         date: new Date().toISOString(),
-        recordedBy: user.uid,
+        recordedBy: user.id,
         createdAt: new Date().toISOString()
       });
       setIsModalOpen(false);

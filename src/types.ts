@@ -1,7 +1,7 @@
 export type Role = 'admin' | 'cashier' | 'observer';
 
 export interface User {
-  uid: string;
+  id: string;
   name: string;
   email: string;
   role: Role;
@@ -97,6 +97,7 @@ export interface ManufacturingCycle {
   cartonsProduced: number;
   cartonPrice: number;
   status: 'active' | 'completed';
+  startDate: string;
   createdAt: string;
   updatedAt: string;
 }

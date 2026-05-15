@@ -29,36 +29,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const role: Role = firebaseUser.email === 'leanhdoc281104@gmail.com' ? 'admin' : 'cashier';
           
           const userData = {
-            uid: firebaseUser.uid,
+            id: firebaseUser.uid,
             name: firebaseUser.displayName || 'User',
             email: firebaseUser.email || '',
-            password: 'google-auth-user', // dummy password, in a real app we'd use idToken
+            password: 'google-auth-user', // dummy password
             role
           };
 
           try {
             await apiService.register(userData);
           } catch (e) {
-            // Probably already exists
+            // Already exists or offline
           }
 
-          // Generate a local token (simulated login for now to get headers)
-          // Ideally we would verify the idToken on backend
-          // For the "Radical Solution" we'll make the backend trust the UID for now or use a secret bypass
-          const loginRes = await apiService.login(userData.email, 'google-auth-user');
-          localStorage.setItem('token', loginRes.token);
-          setUser(loginRes.user);
-
+          try {
+            const loginRes = await apiService.login(userData.email, 'google-auth-user');
+            localStorage.setItem('token', loginRes.token);
+            // Ensure the local role matches our expected role for this critical email
+            const syncedUser = { ...loginRes.user };
+            if (syncedUser.email === 'leanhdoc281104@gmail.com') {
+              syncedUser.role = 'admin';
+            }
+            setUser(syncedUser);
+          } catch (e) {
+            console.error('Login sync failed:', e);
+            setUser({
+              id: firebaseUser.uid,
+              name: firebaseUser.displayName || 'Unknown',
+              email: firebaseUser.email || '',
+              role,
+              createdAt: new Date().toISOString()
+            });
+          }
         } catch (error) {
-          console.error('Error syncing with local API:', error);
-          // Fallback to firebase data for now so they aren't locked out
-          setUser({
-            uid: firebaseUser.uid,
-            name: firebaseUser.displayName || 'Unknown',
-            email: firebaseUser.email || '',
-            role: 'cashier',
-            createdAt: new Date().toISOString()
-          });
+          console.error('Outer sync error:', error);
         }
       } else {
         setUser(null);

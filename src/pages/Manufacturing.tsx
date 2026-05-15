@@ -33,6 +33,7 @@ export const Manufacturing: React.FC = () => {
     manufacturingCost: 0,
     cartonsProduced: 0,
     cartonPrice: 0,
+    startDate: format(new Date(), 'yyyy-MM-dd'),
     status: 'active' as 'active' | 'completed'
   });
 
@@ -87,6 +88,7 @@ export const Manufacturing: React.FC = () => {
     try {
       await apiService.addDoc('manufacturing_cycles', {
         ...cycleFormData,
+        startDate: cycleFormData.startDate || new Date().toISOString(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
@@ -97,6 +99,7 @@ export const Manufacturing: React.FC = () => {
         manufacturingCost: 0,
         cartonsProduced: 0,
         cartonPrice: 0,
+        startDate: format(new Date(), 'yyyy-MM-dd'),
         status: 'active'
       });
       handleRefresh();
@@ -120,7 +123,7 @@ export const Manufacturing: React.FC = () => {
         ...saleFormData,
         totalAmount,
         date: new Date().toISOString(),
-        recordedBy: user.uid
+        recordedBy: user.id
       });
       setIsSaleModalOpen(false);
       setSaleFormData({
@@ -144,7 +147,7 @@ export const Manufacturing: React.FC = () => {
       await apiService.addDoc('manufacturing_expenses', {
         ...expenseFormData,
         date: new Date().toISOString(),
-        recordedBy: user.uid
+        recordedBy: user.id
       });
       setIsExpenseModalOpen(false);
       setExpenseFormData({
@@ -715,6 +718,16 @@ export const Manufacturing: React.FC = () => {
                   required
                   value={cycleFormData.productName}
                   onChange={(e) => setCycleFormData({ ...cycleFormData, productName: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ البدء</label>
+                <input
+                  type="date"
+                  required
+                  value={cycleFormData.startDate}
+                  onChange={(e) => setCycleFormData({ ...cycleFormData, startDate: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
                 />
               </div>
