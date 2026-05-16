@@ -13,22 +13,37 @@ const getHeaders = () => {
 export const apiService = {
   // --- AUTH ---
   async login(email: string, password: string): Promise<{ token: string, user: User }> {
-    const res = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    if (!res.ok) throw new Error('Login failed');
-    return res.json();
+    console.log('Attempting to login user via API:', email);
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: 'Unknown login error' }));
+        console.error('Login API error:', res.status, errData);
+        throw new Error(errData.error || 'Login failed');
+      }
+      return res.json();
+    } catch (e) {
+      console.error('Fetch error during login:', e);
+      throw e;
+    }
   },
 
   async register(data: any): Promise<void> {
+    console.log('Attempting to register user via API:', data.email);
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
-    if (!res.ok) throw new Error('Registration failed');
+    if (!res.ok) {
+      const errText = await res.text();
+      console.warn('Registration response not OK:', res.status, errText);
+      throw new Error('Registration failed');
+    }
   },
 
   // --- DATA ---

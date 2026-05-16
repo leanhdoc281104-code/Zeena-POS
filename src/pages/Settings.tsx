@@ -69,16 +69,17 @@ export const Settings: React.FC = () => {
 
   const [status, setStatus] = useState<{status: string, db: string, error?: string | null} | null>(null);
 
+  const checkStatus = async () => {
+    try {
+      const s = await apiService.getStatus();
+      setStatus({ ...s, error: null });
+    } catch (e: any) {
+      console.error('Status check failed', e);
+      setStatus({ status: 'error', db: 'unknown', error: e.message || String(e) });
+    }
+  };
+
   useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const s = await apiService.getStatus();
-        setStatus({ ...s, error: null });
-      } catch (e: any) {
-        console.error('Status check failed', e);
-        setStatus({ status: 'error', db: 'unknown', error: e.message || String(e) });
-      }
-    };
     checkStatus();
   }, []);
 
@@ -431,13 +432,22 @@ export const Settings: React.FC = () => {
                 تجاوز حدود Firebase (هجرة البيانات)
               </div>
               <div className="flex flex-col items-end gap-1">
-                {status?.status === 'ok' ? (
-                  <span className="text-[10px] font-normal px-2 py-0.5 bg-green-500 text-white rounded-full">السيرفر: {status.db}</span>
-                ) : status?.error ? (
-                  <span className="text-[10px] font-normal px-2 py-0.5 bg-red-500 text-white rounded-full" title={status.error}>خطأ: {status.error.substring(0, 20)}</span>
-                ) : (
-                  <span className="text-[10px] font-normal px-2 py-0.5 bg-red-500 text-white rounded-full">السيرفر غير متصل</span>
-                )}
+                <div className="flex items-center gap-1">
+                  {status?.status === 'ok' ? (
+                    <span className="text-[10px] font-normal px-2 py-0.5 bg-green-500 text-white rounded-full">السيرفر: {status.db}</span>
+                  ) : status?.error ? (
+                    <span className="text-[10px] font-normal px-2 py-0.5 bg-red-500 text-white rounded-full" title={status.error}>خطأ: {status.error.substring(0, 20)}</span>
+                  ) : (
+                    <span className="text-[10px] font-normal px-2 py-0.5 bg-gray-400 text-white rounded-full animate-pulse">جاري الفحص...</span>
+                  )}
+                  <button 
+                    onClick={(e) => { e.preventDefault(); checkStatus(); }}
+                    className="p-1 hover:bg-white/20 rounded-full transition-colors text-blue-600"
+                    title="تحديث الحالة"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${!status ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
                 <span className="text-[10px] font-normal px-2 py-0.5 bg-blue-500 text-white rounded-full">صلاحيتك: {user?.role}</span>
               </div>
             </h2>

@@ -36,30 +36,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             role
           };
 
-          try {
-            await apiService.register(userData);
-          } catch (e) {
-            // Already exists or offline
-          }
+          // Retry logic for initial sync to allow server to boot
+          let synced = false;
+          let attempts = 0;
+          while (!synced && attempts < 3) {
+            attempts++;
+            try {
+              try {
+                await apiService.register(userData);
+              } catch (e) {
+                // Already exists or minor error, continue to login
+              }
 
-          try {
-            const loginRes = await apiService.login(userData.email, 'google-auth-user');
-            localStorage.setItem('token', loginRes.token);
-            // Ensure the local role matches our expected role for this critical email
-            const syncedUser = { ...loginRes.user };
-            if (syncedUser.email === 'leanhdoc281104@gmail.com') {
-              syncedUser.role = 'admin';
+              const loginRes = await apiService.login(userData.email, 'google-auth-user');
+              localStorage.setItem('token', loginRes.token);
+              // Ensure the local role matches our expected role for this critical email
+              const syncedUser = { ...loginRes.user };
+              if (syncedUser.email === 'leanhdoc281104@gmail.com') {
+                syncedUser.role = 'admin';
+              }
+              setUser(syncedUser);
+              synced = true;
+            } catch (e) {
+              console.warn(`Sync attempt ${attempts} failed:`, e);
+              if (attempts < 3) {
+                await new Promise(r => setTimeout(r, 1000 * attempts)); // Exponential backoff
+              } else {
+                console.error('Final sync failure:', e);
+                setUser({
+                  id: firebaseUser.uid,
+                  name: firebaseUser.displayName || 'Unknown',
+                  email: firebaseUser.email || '',
+                  role,
+                  createdAt: new Date().toISOString()
+                });
+              }
             }
-            setUser(syncedUser);
-          } catch (e) {
-            console.error('Login sync failed:', e);
-            setUser({
-              id: firebaseUser.uid,
-              name: firebaseUser.displayName || 'Unknown',
-              email: firebaseUser.email || '',
-              role,
-              createdAt: new Date().toISOString()
-            });
           }
         } catch (error) {
           console.error('Outer sync error:', error);

@@ -20,13 +20,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize Database
-initDb().then(() => {
-  console.log('Database initialized');
-}).catch(err => {
-  console.error('Database initialization failed', err);
-});
-
 // Auth Middleware
 const authenticateToken = (req: any, res: any, next: any) => {
   const authHeader = req.headers['authorization'];
@@ -45,23 +38,33 @@ const authenticateToken = (req: any, res: any, next: any) => {
 app.get('/api/status', async (req, res) => {
   try {
     const hasUsers = await db.schema.hasTable('users');
-    res.json({ status: 'ok', db: hasUsers ? 'ready' : 'not_ready' });
-  } catch (e) {
-    res.status(500).json({ status: 'error', error: String(e) });
+    res.json({ 
+      status: 'ok', 
+      db: hasUsers ? 'ready' : 'not_ready',
+      env: process.env.NODE_ENV || 'development',
+      time: new Date().toISOString()
+    });
+  } catch (e: any) {
+    console.error('Status check error:', e);
+    res.status(500).json({ status: 'error', error: e.message || String(e) });
   }
 });
 
 app.post('/api/auth/register', async (req, res) => {
-  const { uid, name, email, password, role } = req.body;
+  const { id, uid, name, email, password, role } = req.body;
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    const finalId = uid || Math.random().toString(36).substring(2, 15);
+    const finalId = id || uid || Math.random().toString(36).substring(2, 15);
+    
+    console.log(`Processing registration for ${email} with ID ${finalId}`);
     
     const existing = await db('users').where({ email }).first();
     if (existing) {
+      console.log(`User ${email} already exists, updating...`);
       await db('users').where({ email }).update({
+        id: finalId, // Ensure ID matches
         name,
-        password: hashedPassword, // Sync password too
+        password: hashedPassword,
         role: role || existing.role
       });
       return res.json({ message: 'User updated' });
@@ -74,6 +77,7 @@ app.post('/api/auth/register', async (req, res) => {
       password: hashedPassword,
       role: role || 'cashier'
     });
+    console.log(`User ${email} created successfully`);
     res.status(201).json({ message: 'User created' });
   } catch (error) {
     console.error('Register error:', error);
@@ -365,8 +369,17 @@ app.get('/api/backup/export', authenticateToken, async (req: any, res) => {
 
 // Vite Middleware for Dev
 async function startServer() {
-  console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode`);
-  if (process.env.NODE_ENV !== 'production') {
+  const env = process.env.NODE_ENV || 'development';
+  console.log(`Starting server in ${env} mode on port ${PORT}`);
+  
+  try {
+    await initDb();
+    console.log('Database initialized successfully');
+  } catch (err) {
+    console.error('Database initialization failed', err);
+  }
+
+  if (env !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
