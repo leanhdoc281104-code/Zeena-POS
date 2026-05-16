@@ -3,15 +3,13 @@ import { doc, getDoc, setDoc, collection, getDocs, deleteDoc } from 'firebase/fi
 import { db } from '../firebase';
 import { useAuth } from '../AuthContext';
 import { StoreSettings } from '../types';
-import { Save, Store, MapPin, Image as ImageIcon, AlertTriangle } from 'lucide-react';
+import { Save, Store, MapPin, Image as ImageIcon, AlertTriangle, Database, RefreshCw, Download, Calendar, History, ShieldCheck } from 'lucide-react';
 import { compressImage } from '../utils/imageUtils';
 
 import { apiService } from '../services/apiService';
-import { Database, RefreshCw, Download, Calendar, History, ShieldCheck } from 'lucide-react';
 
 export const Settings: React.FC = () => {
   const { user } = useAuth();
-  // ... existing state ...
   const [backingUp, setBackingUp] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(localStorage.getItem('zeina_last_backup'));
   const [backupDue, setBackupDue] = useState(false);
@@ -64,154 +62,6 @@ export const Settings: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(false);
-  const [migrating, setMigrating] = useState(false);
-  const [migrationStatus, setMigrationStatus] = useState<{current: string, total: number, done: number} | null>(null);
-
-  const [status, setStatus] = useState<{status: string, db: string, error?: string | null} | null>(null);
-
-  const checkStatus = async () => {
-    try {
-      const s = await apiService.getStatus();
-      setStatus({ ...s, error: null });
-    } catch (e: any) {
-      console.error('Status check failed', e);
-      setStatus({ status: 'error', db: 'unknown', error: e.message || String(e) });
-    }
-  };
-
-  useEffect(() => {
-    checkStatus();
-  }, []);
-
-  const [showConfirmMigrate, setShowConfirmMigrate] = useState(false);
-
-  const handleMigrateToLocal = async () => {
-    setShowConfirmMigrate(false);
-    try {
-      console.log('Migration process triggered. User:', user?.email);
-      
-      if (!user) {
-        alert('حدث خطأ: لا توجد بيانات للمستخدم الحالي. يرجى تسجيل الخروج والدخول مرة أخرى.');
-        return;
-      }
-      
-      if (user.role !== 'admin') {
-        alert('عذراً، هذه الميزة متاحة فقط للمديرين.');
-        return;
-      }
-
-      setMigrating(true);
-      setMigrationStatus({ current: 'جاري البدء والتحقق من الاتصال...', total: 0, done: 0 });
-      
-      const collectionsToMigrate = [
-        'users',
-        'products',
-        'sales',
-        'purchases',
-        'expenses',
-        'customers',
-        'manufacturing_cycles',
-        'manufacturing_sales',
-        'manufacturing_expenses'
-      ];
-
-      for (const colName of collectionsToMigrate) {
-        setMigrationStatus(prev => ({ 
-          current: `جاري تحميل بيانات ${colName} من Firebase...`, 
-          total: prev?.total || 0, 
-          done: prev?.done || 0 
-        }));
-        
-        let querySnapshot;
-        try {
-          querySnapshot = await getDocs(collection(db, colName));
-        } catch (e: any) {
-          console.error(`Firebase error fetching ${colName}:`, e);
-          if (e.message?.includes('quota')) {
-            alert(`فشل تحميل ${colName}: تم تجاوز حدود Firebase المجانية. يرجى الانتظار حتى الغد أو الترقية.`);
-            throw e;
-          }
-          continue; // Try next collection
-        }
-
-        const totalDocs = querySnapshot.size;
-        let count = 0;
-        
-        setMigrationStatus({ current: `جاري نقل ${colName} (${totalDocs} مستند)...`, total: totalDocs, done: 0 });
-
-        for (const document of querySnapshot.docs) {
-          let retryCount = 3;
-          while (retryCount > 0) {
-            try {
-              const rowData = document.data();
-              // Sanitize Firestore values (like Timestamps)
-              Object.keys(rowData).forEach(key => {
-                const val = rowData[key];
-                if (val && typeof val === 'object') {
-                  if (val.seconds !== undefined) {
-                    rowData[key] = new Date(val.seconds * 1000).toISOString();
-                  } else if (val.toDate && typeof val.toDate === 'function') {
-                    rowData[key] = val.toDate().toISOString();
-                  }
-                }
-              });
-
-              const data = { ...rowData, id: document.id };
-              await apiService.updateDoc(colName, document.id, data);
-              count++;
-              setMigrationStatus(prev => ({ 
-                current: `جاري معالجة ${colName}...`, 
-                total: totalDocs, 
-                done: count 
-              }));
-              
-              // Small delay every 10 docs to prevent congestion
-              if (count % 10 === 0) {
-                await new Promise(r => setTimeout(r, 50));
-              }
-              break; // Success, exit retry loop
-            } catch (e: any) {
-              console.error(`Attempt ${4 - retryCount} failed for doc ${document.id} in ${colName}:`, e);
-              retryCount--;
-              if (retryCount > 0) {
-                await new Promise(r => setTimeout(r, 500)); // Wait before retry
-              } else {
-                console.error(`Final failure for doc ${document.id} in ${colName}`);
-              }
-            }
-          }
-        }
-      }
-
-      // Migrate settings separately as they might be different structure
-      setMigrationStatus({ current: 'جاري نقل الإعدادات النهائية...', total: 2, done: 0 });
-      try {
-        const settingsSnap = await getDoc(doc(db, 'settings', 'store'));
-        if (settingsSnap.exists()) {
-          await apiService.updateDoc('settings', 'store', settingsSnap.data());
-        }
-        setMigrationStatus(prev => ({ ...prev!, done: 1 }));
-        
-        const partnershipSnap = await getDoc(doc(db, 'settings', 'partnership'));
-        if (partnershipSnap.exists()) {
-          await apiService.updateDoc('settings', 'partnership', partnershipSnap.data());
-        }
-        setMigrationStatus(prev => ({ ...prev!, done: 2 }));
-      } catch (e) {
-        console.error('Settings migration failed:', e);
-      }
-
-      setMigrationStatus(null);
-      alert('تمت عملية نقل البيانات بنجاح تام! يمكنك الآن العمل بشكل أسرع دون قيود.');
-      window.location.reload(); // Reload to pick up all new local data
-    } catch (error: any) {
-      console.error('Migration error:', error);
-      alert('حدث خطأ غير متوقع أثناء الهجرة: ' + (error.message || 'فشل الاتصال'));
-    } finally {
-      setMigrating(false);
-      setMigrationStatus(null);
-    }
-  };
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -219,12 +69,6 @@ export const Settings: React.FC = () => {
         const data = await apiService.getDoc<StoreSettings>('settings', 'store');
         if (data) {
           setSettings(data);
-        } else {
-          // Try fallback to firebase for initial migration context
-          const docSnap = await getDoc(doc(db, 'settings', 'store'));
-          if (docSnap.exists()) {
-            setSettings(docSnap.data() as StoreSettings);
-          }
         }
       } catch (error) {
         console.error('Error fetching settings:', error);
@@ -422,134 +266,6 @@ export const Settings: React.FC = () => {
           )}
         </form>
       </div>
-
-      {user?.role === 'admin' && (
-        <div className="mt-8 bg-blue-50 rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
-          <div className="p-6 border-b border-blue-100 bg-blue-100/50">
-            <h2 className="text-xl font-bold text-blue-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Database className="w-6 h-6" />
-                تجاوز حدود Firebase (هجرة البيانات)
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-1">
-                  {status?.status === 'ok' ? (
-                    <span className="text-[10px] font-normal px-2 py-0.5 bg-green-500 text-white rounded-full">السيرفر: {status.db}</span>
-                  ) : status?.error ? (
-                    <span className="text-[10px] font-normal px-2 py-0.5 bg-red-500 text-white rounded-full" title={status.error}>خطأ: {status.error.substring(0, 20)}</span>
-                  ) : (
-                    <span className="text-[10px] font-normal px-2 py-0.5 bg-gray-400 text-white rounded-full animate-pulse">جاري الفحص...</span>
-                  )}
-                  <button 
-                    onClick={(e) => { e.preventDefault(); checkStatus(); }}
-                    className="p-1 hover:bg-white/20 rounded-full transition-colors text-blue-600"
-                    title="تحديث الحالة"
-                  >
-                    <RefreshCw className={`w-3 h-3 ${!status ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
-                <span className="text-[10px] font-normal px-2 py-0.5 bg-blue-500 text-white rounded-full">صلاحيتك: {user?.role}</span>
-              </div>
-            </h2>
-            <p className="text-blue-600 mt-1">
-              انقل بياناتك إلى الاستضافة المحلية (Hostinger) للتخلص من مشاكل حدود القراءة اليومية نهائياً.
-            </p>
-          </div>
-          <div className="p-6">
-            {(() => {
-              if (migrating) {
-                return (
-                  <div className="animate-pulse flex items-center justify-center gap-3 py-4 px-4 bg-blue-100 text-blue-700 rounded-xl font-bold border border-blue-200">
-                    <RefreshCw className="w-6 h-6 animate-spin" />
-                    جاري نقل البيانات الآن... ({migrationStatus?.done || 0} / {migrationStatus?.total || 0})
-                  </div>
-                );
-              }
-              
-              if (showConfirmMigrate) {
-                return (
-                  <div className="bg-white border-2 border-blue-600 rounded-xl p-5 space-y-4 shadow-xl transform transition-all duration-300 scale-100">
-                    <div className="flex items-center gap-3 text-blue-800 font-bold text-lg mb-2">
-                      <AlertTriangle className="w-7 h-7 text-blue-600" />
-                      تأكيد النقل النهائي للقاعدة المحلية
-                    </div>
-                    <p className="text-sm font-medium text-gray-700 leading-relaxed">
-                      سيتم نسخ جميع بياناتك (المنتجات، المبيعات، العملاء، الخ) من Firebase إلى SQLite المحلي. 
-                      هذا الإجراء آمن ولا يحذف بياناتك الأصلية. هل تود المتابعة؟
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          console.log('Final migration confirmation clicked');
-                          handleMigrateToLocal();
-                        }}
-                        className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-xl text-sm font-bold hover:bg-blue-700 shadow-md active:scale-95 transition-all text-center"
-                      >
-                        نعم، ابدأ نقل البيانات الآن
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          console.log('Migration cancelled');
-                          setShowConfirmMigrate(false);
-                        }}
-                        className="flex-1 bg-gray-100 text-gray-600 py-3 px-6 rounded-xl text-sm font-medium hover:bg-gray-200 transition-all text-center"
-                      >
-                        إلغاء
-                      </button>
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    console.log('Migration initial trigger clicked. User role:', user?.role);
-                    if (user?.role !== 'admin') {
-                      alert('عذراً، صلاحياتك الحالية هي (' + (user?.role || 'غير معروف') + ') بينما الهجرة تتطلب صلاحية مدير (admin).');
-                      return;
-                    }
-                    setShowConfirmMigrate(true);
-                  }}
-                  className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg transition-all active:scale-95 group"
-                >
-                  <RefreshCw className="w-6 h-6 group-hover:rotate-180 transition-transform duration-700" />
-                  <span className="text-lg">بدء هجرة البيانات إلى SQLite</span>
-                </button>
-              );
-            })()}
-            
-            {migrationStatus && (
-              <div className="mt-4 p-4 bg-white rounded-xl border border-blue-200 shadow-sm">
-                <p className="text-sm font-medium text-blue-800 mb-2">{migrationStatus.current}</p>
-                {migrationStatus.total > 0 && (
-                  <div className="space-y-1">
-                    <div className="w-full bg-blue-100 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                        style={{ width: `${(migrationStatus.done / migrationStatus.total) * 100}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-[10px] text-blue-500 font-mono">
-                      <span>{migrationStatus.done} من {migrationStatus.total}</span>
-                      <span>{Math.round((migrationStatus.done / migrationStatus.total) * 100)}%</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-            <p className="text-xs text-blue-500 mt-3 text-center">
-              ملاحظة: هذا الإجراء لا يمسح بيانات Firebase الأصلية، بل ينسخها فقط.
-            </p>
-          </div>
-        </div>
-      )}
 
       {user?.role === 'admin' && (
         <div className="mt-8 bg-green-50 rounded-2xl shadow-sm border border-green-100 overflow-hidden">

@@ -69,67 +69,24 @@ export const POS: React.FC = () => {
     };
     fetchSettings();
 
-    // Initial product load (Limited to 24 for a good grid)
+    // Initial product load
     const loadInitialProducts = async () => {
-      // Check cache first
-      const cachedProducts = sessionStorage.getItem('pos_initial_products');
-      if (cachedProducts) {
-        try {
-          const parsed = JSON.parse(cachedProducts);
-          if (new Date().getTime() - parsed.timestamp < 10 * 60 * 1000) { // 10 min cache
-            setProducts(parsed.data);
-            setHasMore(parsed.data.length >= 25);
-            return;
-          }
-        } catch (e) {}
-      }
-
       try {
         const data = await apiService.getCollection<Product>('products', {
           orderBy: 'name',
-          limit: 25 // Load 25 initially for POS
+          limit: 1000 // Load more products to ensure store availability
         });
         setProducts(data);
-        setHasMore(data.length === 25);
-        
-        try {
-          sessionStorage.setItem('pos_initial_products', JSON.stringify({
-            data,
-            timestamp: new Date().getTime()
-          }));
-        } catch (e) {
-          console.warn('Could not cache products in sessionStorage:', e);
-        }
+        setHasMore(data.length === 1000);
       } catch (error: any) {
         console.error('Error loading initial products:', error);
       }
     };
 
     const loadCustomers = async () => {
-      // Check cache first
-      const cachedCustomers = sessionStorage.getItem('pos_customers');
-      if (cachedCustomers) {
-        try {
-          const parsed = JSON.parse(cachedCustomers);
-          if (new Date().getTime() - parsed.timestamp < 30 * 60 * 1000) { // 30 min cache
-            setCustomers(parsed.data);
-            return;
-          }
-        } catch (e) {}
-      }
-
       try {
-        const data = await apiService.getCollection<Customer>('customers', { orderBy: 'name', limit: 500 });
+        const data = await apiService.getCollection<Customer>('customers', { orderBy: 'name', limit: 1000 });
         setCustomers(data);
-        
-        try {
-          sessionStorage.setItem('pos_customers', JSON.stringify({
-            data,
-            timestamp: new Date().getTime()
-          }));
-        } catch (e) {
-          console.warn('Could not cache customers in sessionStorage:', e);
-        }
       } catch (error: any) {
         console.error('Error loading customers:', error);
       }
@@ -146,14 +103,14 @@ export const POS: React.FC = () => {
       const startAfterId = products.length > 0 ? products[products.length - 1].id : undefined;
       const data = await apiService.getCollection<Product>('products', {
         orderBy: 'name',
-        limit: 25,
+        limit: 250,
         startAfterId
       });
       setProducts(prev => {
         const newItems = data.filter(d => !prev.find(p => p.id === d.id));
         return [...prev, ...newItems];
       });
-      setHasMore(data.length === 25);
+      setHasMore(data.length === 250);
     } catch (error) {
       console.error('Error loading more products:', error);
     } finally {
@@ -177,19 +134,51 @@ export const POS: React.FC = () => {
           return;
         }
 
-        // If not found locally, search on server
-        const results = await apiService.getCollection<Product>('products', {
-          whereField: 'barcode',
-          whereValue: searchQuery,
-          limit: 1
-        });
-        
-        if (results.length > 0) {
-          const foundProduct = results[0];
-          setProducts(prev => [foundProduct, ...prev]);
-          addToCart(foundProduct);
-          setSearchQuery('');
-          setToast({ message: `تمت إضافة ${foundProduct.name}`, type: 'success' });
+        // If not found locally, search on server by barcode
+        try {
+          const barcodeResults = await apiService.getCollection<Product>('products', {
+            whereField: 'barcode',
+            whereValue: searchQuery,
+            limit: 1
+          });
+          
+          if (barcodeResults.length > 0) {
+            const foundProduct = barcodeResults[0];
+            setProducts(prev => {
+              const exists = prev.find(p => p.id === foundProduct.id);
+              return exists ? prev : [foundProduct, ...prev];
+            });
+            addToCart(foundProduct);
+            setSearchQuery('');
+            setToast({ message: `تمت إضافة ${foundProduct.name}`, type: 'success' });
+            return;
+          }
+        } catch (e: any) {
+          console.warn('Barcode search failed (possibly quota)', e);
+        }
+
+        // If still no barcode match and query is text-heavy, search on server by name
+        if (searchQuery.length >= 2) {
+          try {
+            const nameResults = await apiService.getCollection<Product>('products', {
+              search: searchQuery,
+              limit: 20
+            });
+            
+            if (nameResults.length > 0) {
+              setProducts(prev => {
+                // Merge results avoiding duplicates
+                const existingIds = new Set(prev.map(p => p.id));
+                const newItems = nameResults.filter(p => !existingIds.has(p.id));
+                return [...newItems, ...prev];
+              });
+            }
+          } catch (e: any) {
+            console.warn('Name search failed (possibly quota)', e);
+            if (e.message?.includes('Quota')) {
+              setToast({ message: 'تجاوزت حد البحث اليومي. استخدم البحث المحلي فقط.', type: 'error' });
+            }
+          }
         }
       } catch (error) {
         console.error('Search error:', error);
@@ -222,6 +211,24 @@ export const POS: React.FC = () => {
     if (product) {
       addToCart(product);
     } else {
+      // Check for exact name match on server if barcode failed
+      try {
+        const nameResults = await apiService.getCollection<Product>('products', {
+          whereField: 'name',
+          whereValue: barcode, // User might have typed exact name in the barcode field
+          limit: 1
+        });
+        if (nameResults.length > 0) {
+          product = nameResults[0];
+          setProducts(prev => {
+            const exists = prev.find(p => p.id === product!.id);
+            return exists ? prev : [product!, ...prev];
+          });
+          addToCart(product);
+          return;
+        }
+      } catch (e) {}
+
       setToast({ message: 'المنتج غير موجود في المخزون. جاري البحث باستخدام الذكاء الاصطناعي...', type: 'info' });
       setIsIdentifying(true);
       try {

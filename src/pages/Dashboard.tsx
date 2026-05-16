@@ -58,27 +58,6 @@ export const Dashboard: React.FC = () => {
   const fetchDashboardData = useCallback(async (force = false) => {
     if (isLoading) return;
     
-    const cacheKey = `dashboard_data_v2_${dateFilter}_${customStartDate}_${customEndDate}`;
-    const cachedData = sessionStorage.getItem(cacheKey);
-    
-    if (!force && cachedData) {
-      try {
-        const parsed = JSON.parse(cachedData);
-        if (new Date().getTime() - parsed.timestamp < 2 * 60 * 1000) {
-          setSales(parsed.sales);
-          setExpenses(parsed.expenses);
-          setPurchases(parsed.purchases);
-          setProducts(parsed.products);
-          setMfgCycles(parsed.mfgCycles);
-          setMfgSales(parsed.mfgSales);
-          setMfgExpenses(parsed.mfgExpenses);
-          setLastRefreshed(new Date(parsed.timestamp));
-          setErrorStatus(null);
-          return;
-        }
-      } catch (e) {}
-    }
-
     setIsLoading(true);
 
     try {
@@ -88,8 +67,11 @@ export const Dashboard: React.FC = () => {
       const fetchWithFallback = async <T extends unknown>(name: string, promise: Promise<T[]>): Promise<T[]> => {
         try {
           return await promise;
-        } catch (e) {
+        } catch (e: any) {
           console.error(`Failed to fetch ${name}:`, e);
+          if (e.message?.includes('Quota')) {
+            setErrorStatus('quota_exceeded');
+          }
           return [];
         }
       };
@@ -103,13 +85,13 @@ export const Dashboard: React.FC = () => {
         mfgSalesSnap,
         mfgExpensesSnap
       ] = await Promise.all([
-        fetchWithFallback('sales', apiService.getCollection<Sale>('sales', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 1000 })),
-        fetchWithFallback('expenses', apiService.getCollection<Expense>('expenses', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 1000 })),
-        fetchWithFallback('purchases', apiService.getCollection<Purchase>('purchases', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 1000 })),
-        fetchWithFallback('products', apiService.getCollection<Product>('products', { limit: 500 })),
-        fetchWithFallback('manufacturing_cycles', apiService.getCollection<ManufacturingCycle>('manufacturing_cycles', { whereField: 'startDate', whereValue: endISO, whereOp: '<=', limit: 500 })),
-        fetchWithFallback('manufacturing_sales', apiService.getCollection<ManufacturingSale>('manufacturing_sales', { whereField: 'date', whereValue: startISO, whereOp: '>=', limit: 500 })),
-        fetchWithFallback('manufacturing_expenses', apiService.getCollection<ManufacturingExpense>('manufacturing_expenses', { whereField: 'date', whereValue: startISO, whereOp: '>=', limit: 500 }))
+        fetchWithFallback('sales', apiService.getCollection<Sale>('sales', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 100 })),
+        fetchWithFallback('expenses', apiService.getCollection<Expense>('expenses', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 100 })),
+        fetchWithFallback('purchases', apiService.getCollection<Purchase>('purchases', { whereField: 'date', whereValue: startISO, whereOp: '>=', orderBy: 'date', orderDir: 'desc', limit: 100 })),
+        fetchWithFallback('products', apiService.getCollection<Product>('products', { limit: 100 })),
+        fetchWithFallback('manufacturing_cycles', apiService.getCollection<ManufacturingCycle>('manufacturing_cycles', { whereField: 'startDate', whereValue: endISO, whereOp: '<=', limit: 100 })),
+        fetchWithFallback('manufacturing_sales', apiService.getCollection<ManufacturingSale>('manufacturing_sales', { whereField: 'date', whereValue: startISO, whereOp: '>=', limit: 100 })),
+        fetchWithFallback('manufacturing_expenses', apiService.getCollection<ManufacturingExpense>('manufacturing_expenses', { whereField: 'date', whereValue: startISO, whereOp: '>=', limit: 100 }))
       ]);
 
       const freshData = {
@@ -131,11 +113,6 @@ export const Dashboard: React.FC = () => {
       setMfgSales(freshData.mfgSales);
       setMfgExpenses(freshData.mfgExpenses);
       
-      try {
-        sessionStorage.setItem(cacheKey, JSON.stringify(freshData));
-      } catch (e) {
-        console.warn('Dashboard data too large for sessionStorage:', e);
-      }
       setLastRefreshed(new Date());
       setErrorStatus(null);
     } catch (error: any) {

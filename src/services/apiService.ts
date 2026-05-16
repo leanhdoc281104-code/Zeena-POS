@@ -1,20 +1,21 @@
-import { collection, doc, getDocs, getDoc as fbGetDoc, setDoc, deleteDoc, updateDoc as fbUpdateDoc, writeBatch, runTransaction, query, where, orderBy, limit, startAfter, DocumentData } from 'firebase/firestore';
+import { collection, doc, getDocs, getDoc as fbGetDoc, setDoc, deleteDoc, updateDoc as fbUpdateDoc, writeBatch, runTransaction, query, where, orderBy, limit, startAfter, DocumentData, getDocsFromCache, getDocFromCache } from 'firebase/firestore';
 import { db } from '../firebase';
 import { User, Product, Sale, Expense, Customer, ManufacturingCycle, ManufacturingSale, ManufacturingExpense } from '../types';
 
 // In Firebase, we might want to continue using our Auth via Firebase Auth, 
 // but since we custom-made login/register using custom email logic, 
 // let's use Firebase auth here.
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
 const auth = getAuth();
+const googleProvider = new GoogleAuthProvider();
 
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
 }
 const cache = new Map<string, CacheEntry<any>>();
-const CACHE_TTL = 30000; // 30 seconds
+const CACHE_TTL = 600000; // 10 minutes
 
 function clearCache(colName?: string) {
   if (colName) {
@@ -23,8 +24,26 @@ function clearCache(colName?: string) {
         cache.delete(key);
       }
     }
+    // مسح الذاكرة المحلية (localStorage) المرتبطة بالمجموعة
+    try {
+      const lsKeys = Object.keys(localStorage);
+      lsKeys.forEach(key => {
+        if (key.startsWith(`cache_${colName}`)) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch (e) {}
   } else {
     cache.clear();
+    // مسح كل الذاكرة المحلية المخزنة للتطبيق
+    try {
+      const lsKeys = Object.keys(localStorage);
+      lsKeys.forEach(key => {
+        if (key.startsWith('cache_')) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch (e) {}
   }
 }
 
@@ -43,8 +62,6 @@ export const apiService = {
       
       const userData = userDoc.data() as User;
       
-      // For legacy compat with how AuthContext gets token
-      const token = await firebaseUser.getIdToken();
       // We will save to localStorage the fact we logged in, but we also can rely on jwt
       // We create a fake JWT-like token string so other parts of the app that rely on it (like Layout) are happy
       const fakeToken = `ey.${btoa(unescape(encodeURIComponent(JSON.stringify(userData))))}.fake`;
@@ -53,6 +70,40 @@ export const apiService = {
     } catch (e: any) {
       console.error('Login error:', e);
       throw new Error(e.message || 'Login failed');
+    }
+  },
+
+  async loginWithGoogle(): Promise<{ token: string, user: User }> {
+    try {
+      const userCredential = await signInWithPopup(auth, googleProvider);
+      const firebaseUser = userCredential.user;
+      
+      let userDoc = await fbGetDoc(doc(db, 'users', firebaseUser.uid));
+      
+      if (!userDoc.exists()) {
+        // If first user, make them admin
+        const usersSnap = await getDocs(query(collection(db, 'users'), limit(1)));
+        const role = usersSnap.empty ? 'admin' : ('cashier' as any);
+        
+        const newUser: User = {
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Unknown',
+          email: firebaseUser.email || '',
+          role: role,
+          createdAt: new Date().toISOString()
+        };
+        
+        await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
+        userDoc = await fbGetDoc(doc(db, 'users', firebaseUser.uid));
+      }
+      
+      const userData = userDoc.data() as User;
+      const fakeToken = `ey.${btoa(unescape(encodeURIComponent(JSON.stringify(userData))))}.fake`;
+      
+      return { token: fakeToken, user: userData };
+    } catch (e: any) {
+      console.error('Google login error:', e);
+      throw new Error(e.message || 'Google login failed');
     }
   },
 
@@ -77,7 +128,8 @@ export const apiService = {
 
   // --- DATA ---
   async getCollection<T>(colName: string, params: any = {}): Promise<T[]> {
-    const cacheKey = `${colName}-${JSON.stringify(params)}`;
+    const cacheKey = `col_${colName}-${JSON.stringify(params)}`;
+    
     if (cache.has(cacheKey)) {
       const cached = cache.get(cacheKey)!;
       if (Date.now() - cached.timestamp < CACHE_TTL) {
@@ -91,14 +143,20 @@ export const apiService = {
       
       if (params.whereField && params.whereValue) {
         constraints.push(where(params.whereField, params.whereOp || '==', params.whereValue));
+      } else if (params.search) {
+        constraints.push(where('name', '>=', params.search));
+        constraints.push(where('name', '<=', params.search + '\uf8ff'));
+        if (!params.orderBy || params.orderBy === 'name') {
+          constraints.push(orderBy('name'));
+        }
       }
-      if (params.orderBy) {
+      
+      if (params.orderBy && (!params.search || params.orderBy !== 'name')) {
         constraints.push(orderBy(params.orderBy, params.orderDir || 'asc'));
       }
       if (params.limit) {
         constraints.push(limit(Number(params.limit)));
       }
-      
       if (params.startAfterId) {
         const docRef = doc(db, colName, params.startAfterId);
         const docSnap = await fbGetDoc(docRef);
@@ -108,7 +166,18 @@ export const apiService = {
       }
       
       const q = query(colRef, ...constraints);
-      const snapshot = await getDocs(q);
+      let snapshot;
+      
+      try {
+        snapshot = await getDocs(q);
+      } catch (e: any) {
+        if (e.code === 'resource-exhausted' || e.message?.includes('quota')) {
+          console.warn(`Quota exceeded for ${colName}, attempting to load from cache...`);
+          snapshot = await getDocsFromCache(q);
+        } else {
+          throw e;
+        }
+      }
       
       const results = snapshot.docs.map(doc => {
          const data = doc.data();
@@ -120,12 +189,16 @@ export const apiService = {
       return results;
     } catch (e: any) {
       console.error(`Fetch ${colName} failed`, e);
-      throw new Error(`Fetch ${colName} failed`);
+      if (e.code === 'resource-exhausted' || e.message?.includes('quota')) {
+        throw new Error('انتهى حد استخدام البيانات لليوم (Quota Exceeded). يرجى الانتظار حتى تحديث خطة Blaze أو استعادة الخدمة تلقائياً.');
+      }
+      throw new Error(`فشل تحميل البيانات من ${colName}`);
     }
   },
 
   async getDoc<T>(colName: string, id: string): Promise<T | null> {
     const cacheKey = `${colName}-${id}`;
+    
     if (cache.has(cacheKey)) {
       const cached = cache.get(cacheKey)!;
       if (Date.now() - cached.timestamp < CACHE_TTL) {
@@ -135,7 +208,19 @@ export const apiService = {
 
     try {
       const docRef = doc(db, colName, id);
-      const snapshot = await fbGetDoc(docRef);
+      let snapshot;
+      
+      try {
+        snapshot = await fbGetDoc(docRef);
+      } catch (e: any) {
+        if (e.code === 'resource-exhausted' || e.message?.includes('quota')) {
+          console.warn(`Quota exceeded for ${colName}/${id}, attempting to load from cache...`);
+          snapshot = await getDocFromCache(docRef);
+        } else {
+          throw e;
+        }
+      }
+      
       if (snapshot.exists()) {
         const data = snapshot.data();
         if (!data.id) data.id = snapshot.id;
@@ -144,9 +229,12 @@ export const apiService = {
         return result;
       }
       return null;
-    } catch (e) {
+    } catch (e: any) {
       console.error(`Fetch doc ${colName}/${id} failed`, e);
-      throw new Error(`Fetch doc ${id} failed`);
+      if (e.code === 'resource-exhausted' || e.message?.includes('quota')) {
+        throw new Error('انتهى حد استخدام البيانات لليوم (Quota Exceeded). يرجى الانتظار حتى تحديث خطة Blaze أو استعادة الخدمة تلقائياً.');
+      }
+      throw new Error(`فشل تحميل الوثيقة ${id}`);
     }
   },
 
@@ -156,9 +244,12 @@ export const apiService = {
       await setDoc(doc(db, colName, data.id), data);
       clearCache(colName);
       return { id: data.id };
-    } catch (e) {
+    } catch (e: any) {
       console.error(`Add to ${colName} failed`, e);
-      throw new Error(`Add to ${colName} failed`);
+      if (e.code === 'resource-exhausted' || e.message?.includes('quota')) {
+        throw new Error('انتهى حد استخدام البيانات لليوم (Quota Exceeded).');
+      }
+      throw new Error(`فشلت إضافة البيانات إلى ${colName}`);
     }
   },
 
@@ -171,9 +262,13 @@ export const apiService = {
       // We use setDoc with merge instead of updateDoc in case the doc doesn't exist yet
       await setDoc(docRef, updateData, { merge: true });
       clearCache(colName);
-    } catch (e) {
+      localStorage.removeItem(`cache_${colName}-${id}`);
+    } catch (e: any) {
       console.error(`Update ${colName}/${id} failed`, e);
-      throw new Error(`Update ${id} failed`);
+      if (e.code === 'resource-exhausted' || e.message?.includes('quota')) {
+        throw new Error('انتهى حد استخدام البيانات لليوم (Quota Exceeded).');
+      }
+      throw new Error(`فشل تحديث الوثيقة ${id}`);
     }
   },
 
@@ -181,9 +276,13 @@ export const apiService = {
     try {
       await deleteDoc(doc(db, colName, id));
       clearCache(colName);
-    } catch (e) {
+      localStorage.removeItem(`cache_${colName}-${id}`);
+    } catch (e: any) {
       console.error(`Delete ${colName}/${id} failed`, e);
-      throw new Error(`Delete ${id} failed`);
+      if (e.code === 'resource-exhausted' || e.message?.includes('quota')) {
+        throw new Error('انتهى حد استخدام البيانات لليوم (Quota Exceeded).');
+      }
+      throw new Error(`فشل حذف الوثيقة ${id}`);
     }
   },
 

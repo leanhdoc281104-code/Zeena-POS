@@ -9,7 +9,8 @@ import { compressImage } from '../utils/imageUtils';
 import { Toast } from '../components/Toast';
 import { ExportButtons } from '../components/ExportButtons';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 50;
+const INITIAL_LOAD_SIZE = 250;
 
 export const Inventory: React.FC = () => {
   const { user } = useAuth();
@@ -19,9 +20,60 @@ export const Inventory: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+
+  // Debounced search
+  useEffect(() => {
+    if (!searchQuery) {
+      if (isSearching) {
+        setIsSearching(false);
+        fetchProducts(false);
+      }
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      setIsLoading(true);
+      try {
+        // First search by barcode (exact)
+        const barcodeResults = await apiService.getCollection<Product>('products', {
+          whereField: 'barcode',
+          whereValue: searchQuery,
+          limit: 10
+        });
+
+        // Then search by name prefix
+        const nameResults = await apiService.getCollection<Product>('products', {
+          search: searchQuery,
+          limit: 20
+        });
+
+        // Combine and remove duplicates
+        const combined = [...barcodeResults];
+        nameResults.forEach(nr => {
+          if (!combined.find(c => c.id === nr.id)) {
+            combined.push(nr);
+          }
+        });
+
+        setProducts(combined);
+        setHasMore(false); // Disable pagination during search for simplicity
+      } catch (error: any) {
+        console.error('Search error:', error);
+        if (error.message?.includes('Quota')) {
+          setToast({ message: 'تجاوزت حد البحث اليومي لـ Firebase. حاول البحث بكلمات أبسط أو انتظر حتى غدٍ.', type: 'error' });
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -44,21 +96,20 @@ export const Inventory: React.FC = () => {
       const startAfterId = isNextPage && products.length > 0 ? products[products.length - 1].id : undefined;
       const data = await apiService.getCollection<Product>('products', {
         orderBy: 'name',
-        limit: PAGE_SIZE,
+        limit: isNextPage ? PAGE_SIZE : INITIAL_LOAD_SIZE,
         startAfterId
       });
 
       if (isNextPage) {
         setProducts(prev => {
-          // Prevent duplicates just in case cache returns redundant data
           const newItems = data.filter(d => !prev.find(p => p.id === d.id));
           return [...prev, ...newItems];
         });
+        setHasMore(data.length === PAGE_SIZE);
       } else {
         setProducts(data);
+        setHasMore(data.length === INITIAL_LOAD_SIZE);
       }
-
-      setHasMore(data.length === PAGE_SIZE);
     } catch (error) {
       console.error('Error fetching products:', error);
     } finally {
