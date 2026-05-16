@@ -78,7 +78,7 @@ export const POS: React.FC = () => {
           const parsed = JSON.parse(cachedProducts);
           if (new Date().getTime() - parsed.timestamp < 10 * 60 * 1000) { // 10 min cache
             setProducts(parsed.data);
-            setHasMore(false);
+            setHasMore(parsed.data.length >= 25);
             return;
           }
         } catch (e) {}
@@ -87,10 +87,10 @@ export const POS: React.FC = () => {
       try {
         const data = await apiService.getCollection<Product>('products', {
           orderBy: 'name',
-          limit: 100 // Load more initially for POS
+          limit: 25 // Load 25 initially for POS
         });
         setProducts(data);
-        setHasMore(data.length === 100);
+        setHasMore(data.length === 25);
         
         try {
           sessionStorage.setItem('pos_initial_products', JSON.stringify({
@@ -143,13 +143,17 @@ export const POS: React.FC = () => {
     if (isLoadingMore || !hasMore) return;
     setIsLoadingMore(true);
     try {
+      const startAfterId = products.length > 0 ? products[products.length - 1].id : undefined;
       const data = await apiService.getCollection<Product>('products', {
         orderBy: 'name',
-        limit: 100,
-        offset: products.length
+        limit: 25,
+        startAfterId
       });
-      setProducts(prev => [...prev, ...data]);
-      setHasMore(data.length === 100);
+      setProducts(prev => {
+        const newItems = data.filter(d => !prev.find(p => p.id === d.id));
+        return [...prev, ...newItems];
+      });
+      setHasMore(data.length === 25);
     } catch (error) {
       console.error('Error loading more products:', error);
     } finally {
@@ -274,7 +278,7 @@ export const POS: React.FC = () => {
         setToast({ message: 'نفدت الكمية!', type: 'error' });
         return prev;
       }
-      return [...prev, { productId: product.id, name: product.name, price: product.price, cost: product.cost, qty: 1 }];
+      return [...prev, { productId: product.id, name: product.name, price: product.price, basePrice: product.price, cost: product.cost, qty: 1 }];
     });
   };
 
@@ -308,9 +312,14 @@ export const POS: React.FC = () => {
     }));
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const total = Math.max(0, subtotal - discount);
+  const getDisplayPrice = (item: SaleItem) => Math.max(item.basePrice ?? item.price, item.price);
+  
+  const subtotal = cart.reduce((sum, item) => sum + getDisplayPrice(item) * item.qty, 0);
+  const itemsDiscount = cart.reduce((sum, item) => sum + Math.max(0, (item.basePrice ?? item.price) - item.price) * item.qty, 0);
+  const totalDiscount = discount + itemsDiscount;
+  const total = Math.max(0, subtotal - totalDiscount);
   const totalCost = cart.reduce((sum, item) => sum + item.cost * item.qty, 0);
+  // Profit should be based on the actual money received (total) minus the cost
   const profit = total - totalCost;
 
   const handleReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -347,7 +356,7 @@ export const POS: React.FC = () => {
         items: cart,
         total,
         profit,
-        discount,
+        discount: totalDiscount,
         paymentMethod,
         date: new Date().toISOString(),
         cashierId: user?.id,
@@ -376,7 +385,7 @@ export const POS: React.FC = () => {
         id: res.id,
         cart: [...cart],
         total,
-        discount,
+        discount: totalDiscount,
         paymentMethod,
         customerName
       });
@@ -416,12 +425,15 @@ export const POS: React.FC = () => {
       doc.text(`Date: ${new Date().toLocaleString('en-US')}`, 20, currentY + 10);
       doc.text(`Cashier: ${user?.name}`, 20, currentY + 20);
 
-      const tableData = saleData.cart.map((item: any) => [
-        item.name,
-        item.qty.toString(),
-        `${formatCurrency(item.price)}`,
-        `${formatCurrency((item.price * item.qty))}`
-      ]);
+      const tableData = saleData.cart.map((item: any) => {
+        const displayPrice = Math.max(item.basePrice ?? item.price, item.price);
+        return [
+          item.name,
+          item.qty.toString(),
+          `${formatCurrency(displayPrice)}`,
+          `${formatCurrency((displayPrice * item.qty))}`
+        ];
+      });
 
       (doc as any).autoTable({
         startY: currentY + 30,
@@ -906,13 +918,16 @@ export const POS: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {lastSale.cart.map((item, idx) => (
-                    <tr key={idx}>
-                      <td className="py-1">{item.name}</td>
-                      <td className="text-center py-1">{item.qty}</td>
-                      <td className="text-left py-1">{formatCurrency((item.price * item.qty))} ج.س</td>
-                    </tr>
-                  ))}
+                  {lastSale.cart.map((item, idx) => {
+                    const displayPrice = Math.max(item.basePrice ?? item.price, item.price);
+                    return (
+                      <tr key={idx}>
+                        <td className="py-1">{item.name}</td>
+                        <td className="text-center py-1">{item.qty}</td>
+                        <td className="text-left py-1">{formatCurrency((displayPrice * item.qty))} ج.س</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               <div className="border-t border-gray-300 pt-4 space-y-1">

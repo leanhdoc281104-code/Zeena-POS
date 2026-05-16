@@ -298,14 +298,17 @@ export const Sales: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {selectedSale.items.map((item, idx) => (
-                  <tr key={idx} className="border-b border-gray-100">
-                    <td className="p-3">{item.name}</td>
-                    <td className="p-3 text-center">{item.qty}</td>
-                    <td className="p-3">{formatCurrency(item.price)} ج.س</td>
-                    <td className="p-3 font-medium">{formatCurrency((item.price * item.qty))} ج.س</td>
-                  </tr>
-                ))}
+                {selectedSale.items.map((item, idx) => {
+                  const displayPrice = Math.max(item.basePrice ?? item.price, item.price);
+                  return (
+                    <tr key={idx} className="border-b border-gray-100">
+                      <td className="p-3">{item.name}</td>
+                      <td className="p-3 text-center">{item.qty}</td>
+                      <td className="p-3">{formatCurrency(displayPrice)} ج.س</td>
+                      <td className="p-3 font-medium">{formatCurrency((displayPrice * item.qty))} ج.س</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 

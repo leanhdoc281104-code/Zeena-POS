@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, getDoc as fbGetDoc, setDoc, deleteDoc, updateDoc as fbUpdateDoc, writeBatch, runTransaction, query, where, orderBy, limit, DocumentData } from 'firebase/firestore';
+import { collection, doc, getDocs, getDoc as fbGetDoc, setDoc, deleteDoc, updateDoc as fbUpdateDoc, writeBatch, runTransaction, query, where, orderBy, limit, startAfter, DocumentData } from 'firebase/firestore';
 import { db } from '../firebase';
 import { User, Product, Sale, Expense, Customer, ManufacturingCycle, ManufacturingSale, ManufacturingExpense } from '../types';
 
@@ -8,6 +8,25 @@ import { User, Product, Sale, Expense, Customer, ManufacturingCycle, Manufacturi
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 
 const auth = getAuth();
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+const cache = new Map<string, CacheEntry<any>>();
+const CACHE_TTL = 30000; // 30 seconds
+
+function clearCache(colName?: string) {
+  if (colName) {
+    for (const key of cache.keys()) {
+      if (key.startsWith(colName)) {
+        cache.delete(key);
+      }
+    }
+  } else {
+    cache.clear();
+  }
+}
 
 export const apiService = {
   // --- AUTH ---
@@ -58,6 +77,14 @@ export const apiService = {
 
   // --- DATA ---
   async getCollection<T>(colName: string, params: any = {}): Promise<T[]> {
+    const cacheKey = `${colName}-${JSON.stringify(params)}`;
+    if (cache.has(cacheKey)) {
+      const cached = cache.get(cacheKey)!;
+      if (Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.data;
+      }
+    }
+
     try {
       const colRef = collection(db, colName);
       const constraints: any[] = [];
@@ -72,14 +99,25 @@ export const apiService = {
         constraints.push(limit(Number(params.limit)));
       }
       
+      if (params.startAfterId) {
+        const docRef = doc(db, colName, params.startAfterId);
+        const docSnap = await fbGetDoc(docRef);
+        if (docSnap.exists()) {
+          constraints.push(startAfter(docSnap));
+        }
+      }
+      
       const q = query(colRef, ...constraints);
       const snapshot = await getDocs(q);
       
-      return snapshot.docs.map(doc => {
+      const results = snapshot.docs.map(doc => {
          const data = doc.data();
          if (!data.id) data.id = doc.id;
          return data as unknown as T;
       });
+
+      cache.set(cacheKey, { data: results, timestamp: Date.now() });
+      return results;
     } catch (e: any) {
       console.error(`Fetch ${colName} failed`, e);
       throw new Error(`Fetch ${colName} failed`);
@@ -87,13 +125,23 @@ export const apiService = {
   },
 
   async getDoc<T>(colName: string, id: string): Promise<T | null> {
+    const cacheKey = `${colName}-${id}`;
+    if (cache.has(cacheKey)) {
+      const cached = cache.get(cacheKey)!;
+      if (Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.data;
+      }
+    }
+
     try {
       const docRef = doc(db, colName, id);
       const snapshot = await fbGetDoc(docRef);
       if (snapshot.exists()) {
         const data = snapshot.data();
         if (!data.id) data.id = snapshot.id;
-        return data as unknown as T;
+        const result = data as unknown as T;
+        cache.set(cacheKey, { data: result, timestamp: Date.now() });
+        return result;
       }
       return null;
     } catch (e) {
@@ -106,6 +154,7 @@ export const apiService = {
     try {
       if (!data.id) data.id = Math.random().toString(36).substring(2, 15);
       await setDoc(doc(db, colName, data.id), data);
+      clearCache(colName);
       return { id: data.id };
     } catch (e) {
       console.error(`Add to ${colName} failed`, e);
@@ -121,6 +170,7 @@ export const apiService = {
       
       // We use setDoc with merge instead of updateDoc in case the doc doesn't exist yet
       await setDoc(docRef, updateData, { merge: true });
+      clearCache(colName);
     } catch (e) {
       console.error(`Update ${colName}/${id} failed`, e);
       throw new Error(`Update ${id} failed`);
@@ -130,6 +180,7 @@ export const apiService = {
   async deleteDoc(colName: string, id: string): Promise<void> {
     try {
       await deleteDoc(doc(db, colName, id));
+      clearCache(colName);
     } catch (e) {
       console.error(`Delete ${colName}/${id} failed`, e);
       throw new Error(`Delete ${id} failed`);
@@ -166,6 +217,10 @@ export const apiService = {
         }
       });
       
+      clearCache('sales');
+      clearCache('products');
+      if (saleData.paymentMethod === 'debt' && saleData.customerId) clearCache('customers');
+
       return { id: saleData.id };
     } catch (e) {
       console.error('Checkout failed', e);
@@ -197,6 +252,9 @@ export const apiService = {
         }
       });
       
+      clearCache('purchases');
+      clearCache('products');
+
       return { id: purchaseData.id };
     } catch (e) {
       console.error('Purchase record failed', e);

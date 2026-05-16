@@ -30,6 +30,7 @@ export interface SaleItem {
   qty: number;
   price: number;
   cost: number;
+  basePrice?: number;
 }
 
 export interface Sale {

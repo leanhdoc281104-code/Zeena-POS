@@ -28,10 +28,9 @@ export const Layout: React.FC = () => {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const docRef = doc(db, 'settings', 'store');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setSettings(docSnap.data() as StoreSettings);
+        const storedSettings = await import('../services/apiService').then(m => m.apiService.getDoc<StoreSettings>('settings', 'store'));
+        if (storedSettings) {
+          setSettings(storedSettings);
         }
       } catch (error) {
         console.error('Error fetching settings:', error);

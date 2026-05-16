@@ -9,12 +9,11 @@ import { compressImage } from '../utils/imageUtils';
 import { Toast } from '../components/Toast';
 import { ExportButtons } from '../components/ExportButtons';
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 25;
 
 export const Inventory: React.FC = () => {
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
-  const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -42,19 +41,21 @@ export const Inventory: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const currentOffset = isNextPage ? offset : 0;
+      const startAfterId = isNextPage && products.length > 0 ? products[products.length - 1].id : undefined;
       const data = await apiService.getCollection<Product>('products', {
         orderBy: 'name',
         limit: PAGE_SIZE,
-        offset: currentOffset
+        startAfterId
       });
 
       if (isNextPage) {
-        setProducts(prev => [...prev, ...data]);
-        setOffset(currentOffset + PAGE_SIZE);
+        setProducts(prev => {
+          // Prevent duplicates just in case cache returns redundant data
+          const newItems = data.filter(d => !prev.find(p => p.id === d.id));
+          return [...prev, ...newItems];
+        });
       } else {
         setProducts(data);
-        setOffset(PAGE_SIZE);
       }
 
       setHasMore(data.length === PAGE_SIZE);
@@ -64,7 +65,7 @@ export const Inventory: React.FC = () => {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [offset, isLoading]);
+  }, [products, isLoading]);
 
   useEffect(() => {
     fetchProducts();
@@ -72,7 +73,6 @@ export const Inventory: React.FC = () => {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    setOffset(0);
     fetchProducts(false);
   };
 
