@@ -1,98 +1,68 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth, db } from './firebase';
-import { onAuthStateChanged, User as FirebaseUser, signInWithPopup, GoogleAuthProvider, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { User, Role } from './types';
+import { apiService } from './services/apiService';
+import { getAuth, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  signIn: () => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-import { apiService } from './services/apiService';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // We try to sync with Firebase auth to have accurate real-state
+    const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        try {
-          // Sync with local API
-          // Since we're using Google Auth on frontend, we send a magic request to register/login on our backend
-          // For simplicity in this radical shift, we'll try to register the user on our backend if not exists
-          const role: Role = firebaseUser.email === 'leanhdoc281104@gmail.com' ? 'admin' : 'cashier';
-          
-          const userData = {
-            id: firebaseUser.uid,
-            name: firebaseUser.displayName || 'User',
-            email: firebaseUser.email || '',
-            password: 'google-auth-user', // dummy password
-            role
-          };
-
-          // Retry logic for initial sync to allow server to boot
-          let synced = false;
-          let attempts = 0;
-          while (!synced && attempts < 3) {
-            attempts++;
-            try {
-              try {
-                await apiService.register(userData);
-              } catch (e) {
-                // Already exists or minor error, continue to login
-              }
-
-              const loginRes = await apiService.login(userData.email, 'google-auth-user');
-              localStorage.setItem('token', loginRes.token);
-              // Ensure the local role matches our expected role for this critical email
-              const syncedUser = { ...loginRes.user };
-              if (syncedUser.email === 'leanhdoc281104@gmail.com') {
-                syncedUser.role = 'admin';
-              }
-              setUser(syncedUser);
-              synced = true;
-            } catch (e) {
-              console.warn(`Sync attempt ${attempts} failed:`, e);
-              if (attempts < 3) {
-                await new Promise(r => setTimeout(r, 1000 * attempts)); // Exponential backoff
-              } else {
-                console.error('Final sync failure:', e);
-                setUser({
-                  id: firebaseUser.uid,
-                  name: firebaseUser.displayName || 'Unknown',
-                  email: firebaseUser.email || '',
-                  role,
-                  createdAt: new Date().toISOString()
-                });
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Outer sync error:', error);
-        }
-      } else {
-        setUser(null);
-        localStorage.removeItem('token');
-      }
-      setLoading(false);
+       if (firebaseUser) {
+         try {
+           const dbUser = await apiService.getDoc<User>('users', firebaseUser.uid);
+           if (dbUser) setUser(dbUser);
+         } catch (e) {
+           console.error('Failed to load user doc from Firebase:', e);
+         }
+       } else {
+         // Fallback to token if Firebase somehow loses state but local has token 
+         // though we should strictly trust Firebase in paid firebase mode.
+         const token = localStorage.getItem('token');
+         if (token) {
+           try {
+             const payload = JSON.parse(decodeURIComponent(escape(atob(token.split('.')[1]))));
+             setUser(payload);
+           } catch (e) {
+             localStorage.removeItem('token');
+             setUser(null);
+           }
+         } else {
+           setUser(null);
+         }
+       }
+       setLoading(false);
     });
-
     return () => unsubscribe();
   }, []);
 
-  const signIn = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+  const signIn = async (email: string, password: string = 'Zeena123') => {
+    try {
+      const loginRes = await apiService.login(email, password);
+      localStorage.setItem('token', loginRes.token);
+      setUser(loginRes.user);
+    } catch (e: any) {
+      throw new Error(e.message || 'Login failed');
+    }
   };
 
   const signOut = async () => {
+    const auth = getAuth();
     await firebaseSignOut(auth);
+    localStorage.removeItem('token');
+    setUser(null);
   };
 
   return (

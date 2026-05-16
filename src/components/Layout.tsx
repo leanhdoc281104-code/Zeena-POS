@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
-import { ShoppingCart, LayoutDashboard, Package, Receipt, Users, LogOut, Menu, X, Settings as SettingsIcon, FileText, Truck, Handshake, UserCog, Factory } from 'lucide-react';
+import { ShoppingCart, LayoutDashboard, Package, Receipt, Users, LogOut, Menu, X, Settings as SettingsIcon, FileText, Truck, Handshake, UserCog, Factory, Key } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { StoreSettings } from '../types';
+import { getAuth, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -17,6 +18,12 @@ export const Layout: React.FC = () => {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [settings, setSettings] = useState<StoreSettings | null>(null);
+
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [pmError, setPmError] = useState('');
+  const [pmLoading, setPmLoading] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -36,6 +43,32 @@ export const Layout: React.FC = () => {
   const handleSignOut = async () => {
     await signOut();
     navigate('/login');
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentPassword || !newPassword) return;
+    setPmLoading(true);
+    setPmError('');
+    try {
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      if (!currentUser || !currentUser.email) throw new Error('المستخدم غير مسجل الدخول');
+
+      const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+      await reauthenticateWithCredential(currentUser, credential);
+      await updatePassword(currentUser, newPassword);
+
+      alert('تم تغيير كلمة المرور بنجاح');
+      setIsPasswordModalOpen(false);
+      setCurrentPassword('');
+      setNewPassword('');
+    } catch (err: any) {
+      setPmError('فشل تغيير كلمة المرور. تأكد من صحة كلمة المرور الحالية.');
+      console.error(err);
+    } finally {
+      setPmLoading(false);
+    }
   };
 
   const navItems = [
@@ -94,6 +127,13 @@ export const Layout: React.FC = () => {
               </div>
             </div>
             <button
+              onClick={() => setIsPasswordModalOpen(true)}
+              className="flex items-center w-full px-4 py-2 text-sm font-medium text-gray-700 rounded-xl hover:bg-gray-100 transition-colors mb-2"
+            >
+              <Key className="w-5 h-5 ml-3" />
+              تغيير كلمة المرور
+            </button>
+            <button
               onClick={handleSignOut}
               className="flex items-center w-full px-4 py-2 text-sm font-medium text-red-600 rounded-xl hover:bg-red-50 transition-colors"
             >
@@ -118,6 +158,52 @@ export const Layout: React.FC = () => {
           <Outlet />
         </main>
       </div>
+
+      {/* Password Modal */}
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex flex-col items-center justify-center z-[100] p-4 text-right" dir="rtl">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold">تغيير كلمة المرور</h3>
+              <button onClick={() => setIsPasswordModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handlePasswordSubmit} className="space-y-4">
+              {pmError && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg">{pmError}</div>}
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">كلمة المرور الحالية</label>
+                <input
+                  type="password"
+                  required
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-pink-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">كلمة المرور الجديدة</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-pink-500 outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={pmLoading}
+                className="w-full bg-pink-600 text-white rounded-lg py-2 font-medium hover:bg-pink-700 disabled:opacity-50"
+              >
+                {pmLoading ? 'جاري التحديث...' : 'تحديث كلمة المرور'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

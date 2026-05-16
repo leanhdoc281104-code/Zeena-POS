@@ -1,9 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
-import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { db } from '../firebase';
-import firebaseConfig from '../../firebase-applet-config.json';
 import { User } from '../types';
 import { useAuth } from '../AuthContext';
 import { Plus, Trash2, Mail, Shield, User as UserIcon, Key, RefreshCw, Loader2 } from 'lucide-react';
@@ -21,7 +16,7 @@ export const Roles: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    password: '',
+    password: 'Zeena123',
     role: 'cashier' as 'admin' | 'cashier' | 'observer'
   });
 
@@ -53,37 +48,12 @@ export const Roles: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const secondaryApp = getApps().find(app => app.name === 'SecondaryApp') || initializeApp(firebaseConfig, "SecondaryApp");
-      const secondaryAuth = getAuth(secondaryApp);
-
-      const userCredential = await createUserWithEmailAndPassword(
-        secondaryAuth, 
-        formData.email, 
-        formData.password
-      );
-      const newId = userCredential.user.uid;
-
       await apiService.register({
-        id: newId,
         name: formData.name,
         email: formData.email,
         password: formData.password,
         role: formData.role
       });
-
-      try {
-        await setDoc(doc(db, 'users', newId), {
-          id: newId,
-          name: formData.name,
-          email: formData.email,
-          role: formData.role,
-          createdAt: new Date().toISOString()
-        });
-      } catch (e) {
-        console.error('Firebase backup failed', e);
-      }
-
-      await signOut(secondaryAuth);
 
       const subject = encodeURIComponent('تم إنشاء حسابك في نظام زينة');
       const body = encodeURIComponent(
@@ -100,7 +70,7 @@ export const Roles: React.FC = () => {
 
       alert('تم إنشاء الحساب بنجاح');
       setIsModalOpen(false);
-      setFormData({ name: '', email: '', password: '', role: 'cashier' });
+      setFormData({ name: '', email: '', password: 'Zeena123', role: 'cashier' });
       fetchUsers();
     } catch (error: any) {
       console.error('Error creating user:', error);
@@ -114,7 +84,6 @@ export const Roles: React.FC = () => {
     if (window.confirm('هل أنت متأكد من حذف هذا الحساب؟')) {
       try {
         await apiService.deleteDoc('users', id);
-        try { await deleteDoc(doc(db, 'users', id)); } catch(e) {}
         fetchUsers();
       } catch (error) {
         console.error('Error deleting user:', error);
@@ -122,6 +91,7 @@ export const Roles: React.FC = () => {
       }
     }
   };
+
 
   return (
     <div className="space-y-6 print:space-y-4" dir="rtl">

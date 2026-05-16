@@ -1,10 +1,14 @@
 import knex from 'knex';
 import path from 'path';
 
+const dbPath = process.env.NODE_ENV === 'production' 
+  ? path.join('/tmp', 'database.sqlite')
+  : path.join(process.cwd(), 'database.sqlite');
+
 const db = knex({
   client: 'better-sqlite3',
   connection: {
-    filename: path.join(process.cwd(), 'database.sqlite'),
+    filename: dbPath,
   },
   useNullAsDefault: true,
 });

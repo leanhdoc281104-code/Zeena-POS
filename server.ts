@@ -89,12 +89,27 @@ app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   const user = await db('users').where({ email }).first();
 
-  if (user && await bcrypt.compare(password, user.password)) {
-    const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, JWT_SECRET);
+  if (!user) {
+    return res.status(401).json({ error: 'البريد الإلكتروني غير مسجل في النظام' });
+  }
+
+  if (await bcrypt.compare(password, user.password)) {
+    const token = jwt.sign({ id: user.id, role: user.role, name: user.name, email: user.email }, JWT_SECRET);
     res.json({ token, user: { id: user.id, name: user.name, role: user.role, email: user.email } });
   } else {
-    res.status(401).json({ error: 'Invalid credentials' });
+    res.status(401).json({ error: 'كلمة المرور غير صحيحة' });
   }
+});
+
+app.put('/api/auth/password', async (req, res) => {
+  const { email, password, newPassword } = req.body;
+  const user = await db('users').where({ email }).first();
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return res.status(401).json({ error: 'كلمة المرور الحالية غير صحيحة' });
+  }
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  await db('users').where({ email }).update({ password: hashedPassword });
+  res.json({ message: 'تم تغيير كلمة المرور بنجاح' });
 });
 
 // --- UTILS ---
